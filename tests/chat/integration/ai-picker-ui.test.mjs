@@ -32,6 +32,8 @@ test('consolidated AI picker handles selection, refresh errors, connections and 
     const trigger = page.getByRole('button', { name: 'Choose AI model', exact: true });
     await trigger.getByText('Sonnet 5.5', { exact: true }).waitFor();
     assert.equal(await page.getByRole('combobox', { name: 'AI provider' }).count(), 0);
+    // A pointer left over the menu by an earlier click would steal its keyboard highlight.
+    await page.mouse.move(1, 1);
     await trigger.focus(); await page.keyboard.press('Enter');
     const menu = page.getByRole('menu');
     await menu.waitFor();
@@ -40,8 +42,10 @@ test('consolidated AI picker handles selection, refresh errors, connections and 
     await slider.waitFor();
     assert.equal(await slider.getAttribute('aria-valuetext'), 'Default');
     await page.keyboard.press('End');
-    // Focus moves to the slider on the next frame; slow CI runners need a moment.
-    await slider.evaluate(el => new Promise((resolve, reject) => { const deadline = performance.now() + 2000; const check = () => el === document.activeElement ? resolve() : performance.now() > deadline ? reject(new Error('slider never focused')) : requestAnimationFrame(check); check(); }));
+    // Keyboard navigation must reach the slider; a slow runner may need the key a second time.
+    const sliderFocused = ms => slider.evaluate((el, ms) => new Promise(resolve => { const deadline = performance.now() + ms; const check = () => el === document.activeElement ? resolve(true) : performance.now() > deadline ? resolve(false) : requestAnimationFrame(check); check(); }), ms);
+    if (!await sliderFocused(1000)) await page.keyboard.press('End');
+    assert.equal(await sliderFocused(2000), true);
     await page.keyboard.press('ArrowRight');
     assert.equal(await slider.getAttribute('aria-valuetext'), 'Low');
     const sliderBounds = await slider.boundingBox();

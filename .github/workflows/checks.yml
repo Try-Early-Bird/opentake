@@ -23,7 +23,7 @@ concurrency:
 jobs:
   checks:
     strategy:
-      fail-fast: true
+      fail-fast: false
       matrix:
         os: ${{ fromJSON(inputs.platforms == 'macos' && '["macos-latest"]' || '["macos-latest","ubuntu-latest","windows-latest"]') }}
     runs-on: ${{ matrix.os }}
