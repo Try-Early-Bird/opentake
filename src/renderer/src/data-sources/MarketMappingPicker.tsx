@@ -1,0 +1,8 @@
+import {useEffect,useState} from 'react';
+import {Select} from '../components/ui/select';
+export function MarketMappingPicker({venue,value,onChange,id}:{venue:'robinhood'|'coinbase';value:string;onChange(value:string):void;id:string}){
+ const [query,setQuery]=useState(''),[result,setResult]=useState<{venue:string;query:string;items:string[]} | null>(null),[error,setError]=useState(false);
+ useEffect(()=>{let alive=true;setResult(null);setError(false);const timer=setTimeout(()=>{void window.dataSources.configure({action:'market-suggestions',venue,query}).then(items=>{if(alive)setResult({venue,query,items:items as string[]});}).catch(()=>{if(alive)setError(true);});},200);return()=>{alive=false;clearTimeout(timer);};},[venue,query]);
+ const items=result?.venue===venue&&result.query===query?result.items:[];
+ return <div className="min-w-0 space-y-2"><input aria-label={`${id} search markets`} value={query} maxLength={80} placeholder="Find an existing market" className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" onChange={e=>setQuery(e.target.value)}/><Select id={id} ariaLabel={`${id} market`} value={value} onValueChange={onChange} className="w-full" items={[{value:'',label:'Choose market'},...(value&&!items.includes(value)?[{value,label:`${value} · saved mapping`}]:[]),...items.map(value=>({value,label:value}))]}/>{error?<p className="text-xs text-destructive">Could not load markets. Try another search.</p>:result?.venue===venue&&result.query===query&&!items.length?<p className="text-xs text-muted-foreground">No matching markets stored on this device.</p>:null}</div>;
+}

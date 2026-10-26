@@ -1,0 +1,557 @@
+[
+  {
+    "version": 1,
+    "name": "Local owner and platform connections",
+    "checksum": "bc49fc2d14684f2adecb17502f06e1983e9351bd488035fee3587e244184b89e"
+  },
+  {
+    "version": 2,
+    "name": "Background account maintenance queue",
+    "checksum": "a582e3e2218f23e32198024b529f79959cc0cd743f4d25490bb7bb0faf54191b"
+  },
+  {
+    "version": 3,
+    "name": "Persistent takes, instructions, attachments and tool configuration",
+    "checksum": "4ef2255b5c71df4945dafd0dfc491a172a1ec5c788e0f4d1600f596643fc87ce"
+  },
+  {
+    "version": 4,
+    "name": "Job history pagination",
+    "checksum": "5fe4b5f36d45b27179b21e151e954d0b6c148f64c1b1bb92b7fffbb4fbc1cac9"
+  },
+  {
+    "version": 5,
+    "name": "Job execution events and history retention",
+    "checksum": "2c8e89d8a356d163e7be00096ba726f3179c9b2d4f9c85c610ee486786bc2248"
+  },
+  {
+    "version": 6,
+    "name": "Take ordering, default instruction mode and attachment leases",
+    "checksum": "e5d846ab1c7b9d146425552dd0dae8dc438fab4a37b9a6b3b70b789f53c89cce"
+  },
+  {
+    "version": 7,
+    "name": "Deterministic AI instruction revision order",
+    "checksum": "695b9a4302c19006c408b87b230691a092ab2aec5d2026729bd1e62623874b36"
+  },
+  {
+    "version": 8,
+    "name": "Durable tool approval expiry and decisions",
+    "checksum": "889f630b091f2d581a5214f371a6e7e35ee314a62c9fe23cf72f611a188781ee"
+  },
+  {
+    "version": 9,
+    "name": "Saved AI instruction sets",
+    "checksum": "259cdbfdc3a7db46c247645470e2d81ef7657f8dbc5bcc243165cf9d9c6fd77d"
+  },
+  {
+    "version": 10,
+    "name": "Draft and published chat modes",
+    "checksum": "34439b8708e6c4f8b95c0c62fd7ea0cee07f81d1a3cefb450c4286fe6d6948f0"
+  },
+  {
+    "version": 11,
+    "name": "Optional platform data verification",
+    "checksum": "1c85e7acf8974539b5f85448dd708430d8d51301f7789920bb29307f86e99475"
+  },
+  {
+    "version": 12,
+    "name": "Scoped tool permissions and invocation history",
+    "checksum": "104cf39c890193b1e4b155ffdf307c3ce4195fd1c2635553dd13bf8493705cc6"
+  },
+  {
+    "version": 13,
+    "name": "Tool history approval mode column",
+    "checksum": "27e0934ee5a6d6ea70d367455101e6663912cec3193ea6ef5a30ba470de53131"
+  },
+  {
+    "version": 14,
+    "name": "General instruction set and about-you context",
+    "checksum": "4a2cf06924ab666401851a95a7ebeb84f5b30d4417d3ab7a5b3932c1b2880981"
+  },
+  {
+    "version": 15,
+    "name": "Feature-independent AI audit traces",
+    "checksum": "d2665336bb88c42a37c1ed468bb15337b88580672459a1c23060b89e98f69770"
+  },
+  {
+    "version": 16,
+    "name": "Remote MCP OAuth credential references",
+    "checksum": "c2cc2dbf1549421c8d4b59e6037753116e6ff0eb2c87e54190635fbe06b140af"
+  },
+  {
+    "version": 17,
+    "name": "AI audit retention settings",
+    "checksum": "bf320e3d84c61b0b3a67a4423a41461c379b865ce1fd1337d5a9906e260a2390"
+  },
+  {
+    "version": 18,
+    "name": "MCP guidance and metadata provenance",
+    "checksum": "466c08de3a46189ccba7dd180c6181ac07d20758f974daee9edcb33ea138569c"
+  },
+  {
+    "version": 19,
+    "name": "Take Auto and Ask permission modes",
+    "checksum": "fca9b48e210864ab478095134a84406a447e0ecdb587c2bdf4bf98e0033bec11"
+  },
+  {
+    "version": 20,
+    "name": "Chat usage summaries and budgets",
+    "checksum": "2520dde9ba0e4e1128a273a74ea9605b41d2d27c2a05217e30aa83299214a820"
+  },
+  {
+    "version": 21,
+    "name": "Local notifications and native delivery",
+    "checksum": "228f0cb1b3e598a3df3dfa05d402ee319e069324095167a87819f6db265cdd41"
+  },
+  {
+    "version": 22,
+    "name": "Persisted take context summaries",
+    "checksum": "521dcb8e41e07e2a0982bbb875b246641b623585008b1fabc9adbe215096007f"
+  },
+  {
+    "version": 23,
+    "name": "Notification recovery and disabled maintenance attention",
+    "checksum": "c2668b560a471febb9c6882dc54fe59774d1a8825213522b78859880e04d4c24"
+  },
+  {
+    "version": 24,
+    "name": "Reported usage stopping thresholds",
+    "checksum": "3cbc54131439bf3a46faa49ebcd2911131f52d7b1e05302046fefef6948a43df"
+  },
+  {
+    "version": 25,
+    "name": "Persistent account observations, orders and executions",
+    "checksum": "ceaf8d94ff58b7714219ec2ed193f807a850b0e89612d3566e0cb780b80e9922"
+  },
+  {
+    "version": 26,
+    "name": "Account-scoped portfolio history imports",
+    "checksum": "a5f775ebed3be27d14cd0013fa371279b2c20226633f1194c41c14055378ad23"
+  },
+  {
+    "version": 27,
+    "name": "Strategy allocation ledger and reconciliation core",
+    "checksum": "7b713c62a7e342378a1e805fa5fefbe84d5cf48716ed8554ba72f321252cf98a"
+  },
+  {
+    "version": 28,
+    "name": "Basket proposal revisions, commit acceptance and authoring provenance",
+    "checksum": "f2c112405f75f2135bfa20665c78ebfc0e7d4a3732b238b905b1cdf3a05d4089"
+  },
+  {
+    "version": 29,
+    "name": "Immutable development strategy portfolio imports",
+    "checksum": "dd718870e5899d8f4fdd4f38451eb6aade356eb9df0fda2738f8ccc1d92cd0ab"
+  },
+  {
+    "version": 30,
+    "name": "Account options capability",
+    "checksum": "6f13e1ed3c73cf7c029b74b942fb6d89e76c81ab652b2ed0d0d69e8418338a27"
+  },
+  {
+    "version": 31,
+    "name": "Local market quotes and daily closes",
+    "checksum": "1852fa8d6e97f1796bcf1039157835cfa9e7c954c5e9fc49784842d6defb04ff"
+  },
+  {
+    "version": 32,
+    "name": "Persistent market series cache",
+    "checksum": "236a1cc52b8fd73c09ca06e7178ef847000f6d4d5c0bf629e1078045cc41f273"
+  },
+  {
+    "version": 33,
+    "name": "Durable order intents",
+    "checksum": "38e1e5a34bdd3d82cc23ee296ab1c1e10af626e057bd20bbee102538f1ce20ff"
+  },
+  {
+    "version": 34,
+    "name": "Strategy execution: plans, legs, closures and trading preferences",
+    "checksum": "0d8868a1ba0c48f2752b1ff39dcabbdc5259c0bd0d84734a1e883a2359bb8f03"
+  },
+  {
+    "version": 35,
+    "name": "Instruction details and outcomes",
+    "checksum": "75887f1ed6a01c1d5baca7c1f551b574fcd2be24cd6866fbaa9658635817eb6f"
+  },
+  {
+    "version": 36,
+    "name": "Resumed allocations record their applied version",
+    "checksum": "96339871d8077ae317048bb6f78bc08674e092bff6c60ddcf306d47b4e4d43c6"
+  },
+  {
+    "version": 37,
+    "name": "Financial history keeps a year by default",
+    "checksum": "278b12e26620c2c523aa7f92ec95c0f14f8fe35975e7b8c622e8a8937d29c449"
+  },
+  {
+    "version": 38,
+    "name": "Share-count events and abandoned orders",
+    "checksum": "045f065e20abc5effeda6742004cf2dffb275b7fdada7f38b67572463a70786b"
+  },
+  {
+    "version": 39,
+    "name": "Delisted symbols",
+    "checksum": "cbc69fa12940c882cb78091b3b00a9d2eecc8e59405830bf837d67c8b394d728"
+  },
+  {
+    "version": 40,
+    "name": "Imported allocations carry their capital",
+    "checksum": "4a455d6301626b1ab6953325f722592fe2125d69fe4e42c25717e1b780d1427f"
+  },
+  {
+    "version": 41,
+    "name": "Archived takes ask to hold or sell",
+    "checksum": "9d90249f812fef7e7740cfa24aa9591a6a04522ac5d80be964c97be6711fb24f"
+  },
+  {
+    "version": 42,
+    "name": "Archiving leaves a close under way alone",
+    "checksum": "bfff5151dfa8dbe51f92a5b10e1b251c57ea09f94f40accf6211cf0a8ea75d66"
+  },
+  {
+    "version": 43,
+    "name": "Imported takes bind their lots and keep publish days",
+    "checksum": "df1049696736621f1eee7390b6a5460088dd937c0ec5ee2b618685e2d3739c02"
+  },
+  {
+    "version": 44,
+    "name": "Execution notional evidence and background query indexes",
+    "checksum": "d3f62ba16910a8d0784336e769f2e1d1977ee168ca34cca0cd678a9e2182bc7d"
+  },
+  {
+    "version": 45,
+    "name": "Take icons reuse retained image attachments",
+    "checksum": "c188339c052fa84ae1cc209ed10c262355fe20c0610260147fc8d927fb74e658"
+  },
+  {
+    "version": 46,
+    "name": "Indexed Take titles and strategy descriptions",
+    "checksum": "276f9141ea38b2792df4c68988bf18eb66a9326deaf3dcdde7f92448e03386af"
+  },
+  {
+    "version": 47,
+    "name": "Coinbase portfolio connections",
+    "checksum": "fd3b5069c958b0246664a8cf50b0d9b6de95d6f49235ca3d6b6d50dc770a47f5"
+  },
+  {
+    "version": 48,
+    "name": "Account-scoped Coinbase portfolio observations",
+    "checksum": "91d64c2694fb0ab30873b6f456833077cc3ce1e07ebdccac5d018250bfce8ee0"
+  },
+  {
+    "version": 49,
+    "name": "Reusable account plans for research Takes",
+    "checksum": "173f9a903da07eb5c247e04e064bf036f97431e72a32328dfa05faf4ca26ff23"
+  },
+  {
+    "version": 50,
+    "name": "Normalize historical search gram function",
+    "checksum": "f856d816679cd681792cfb03265aeadd5badbae491ff05c7cd0fb30a775972e5"
+  },
+  {
+    "version": 51,
+    "name": "Coinbase transaction history coverage",
+    "checksum": "9cbbfbe036ef32363738025a9be9e40afd37c2a24d164d31e34e0683d2b90103"
+  },
+  {
+    "version": 52,
+    "name": "Coinbase execution evidence and resumable account sync",
+    "checksum": "b8f55e3a0b4377e982afd7fba261124d18f2f9ea5cb422031f96f9576e34d645"
+  },
+  {
+    "version": 53,
+    "name": "Shared public historical price cache",
+    "checksum": "20165ea73bdda8e91b9a7be2584f3a78dfd6bde8ebceed3b5a33d3d94887fbb4"
+  },
+  {
+    "version": 54,
+    "name": "Coinbase execution currency accounting",
+    "checksum": "4bccddc26dd01e9c55dbe521d13a641356200ed6d350ffa874ff98ad6d6d6119"
+  },
+  {
+    "version": 55,
+    "name": "Durable Coinbase allocation accounting",
+    "checksum": "5d6344d4a014d38e5b7d2e3238a7cc0486ac19d4c683dc19e94bafec36a73f01"
+  },
+  {
+    "version": 56,
+    "name": "Reviewed Coinbase capital instructions",
+    "checksum": "a7f295982c2220638ae051b80f6f26f3fd53e3fb2d56fe2125a4e7dd0a6daa8d"
+  },
+  {
+    "version": 57,
+    "name": "Coinbase order previews and reservations",
+    "checksum": "55d879feb7b031e7144a6e665babd47276fcb10eb460da0f338c4d3da989a668"
+  },
+  {
+    "version": 58,
+    "name": "Coinbase order dispatch and recovery",
+    "checksum": "6bb2bec65d3e671792c9d977846a24bc60357a8362ded160cf3ab40a5000c19b"
+  },
+  {
+    "version": 59,
+    "name": "Coinbase allocation risk limits",
+    "checksum": "c4f07cf8a31257b3c5af24adf3b54604577c1f2c73b8884c0d4668a2841afb96"
+  },
+  {
+    "version": 60,
+    "name": "Account-scoped order activity",
+    "checksum": "fca3deac8b5db435b58f8dca314d1a8a601f852f8d9726173afe42e42a412334"
+  },
+  {
+    "version": 61,
+    "name": "Persistent Coinbase sync retries",
+    "checksum": "4b0d2670f7b8ec26a50642848345cfa22660c7bc4d3cbbf67be9799ba924f1ac"
+  },
+  {
+    "version": 62,
+    "name": "Coinbase investment command recovery",
+    "checksum": "fc29acab297f63e5a4e2a4bf3191242595de196dd26d0d9b05593a9c8fa18b48"
+  },
+  {
+    "version": 63,
+    "name": "Coinbase scheduled rebalance recovery",
+    "checksum": "48894fffa58ab65918fffd728009e2cf050e4aa0fb552e0fd6d273fa5b02d869"
+  },
+  {
+    "version": 64,
+    "name": "Coinbase allocation recovery and version adoption",
+    "checksum": "6012f2a83f1e2fe7d8ec181cfc0a00c226ae3aa8a5e009e3e24935234f0b08ab"
+  },
+  {
+    "version": 65,
+    "name": "Coinbase rebalance warning status",
+    "checksum": "896c7bdd5b33182d99a9e5ca2330eb3ec09ebbc1e998c7e9b680da3df31509a9"
+  },
+  {
+    "version": 66,
+    "name": "Coinbase cash-sized market buy fills",
+    "checksum": "6c66f94692b6395be1992006f9999daee681783059aba508dd0af2f8563687ed"
+  },
+  {
+    "version": 67,
+    "name": "Coinbase rebalance warning evidence",
+    "checksum": "6be3a8a7592e25f96ee0c857469e0c96c306b0e5337961f5938cfcea95822e6e"
+  },
+  {
+    "version": 68,
+    "name": "Reviewed Robinhood allocation versions",
+    "checksum": "c07b3be8a63a45a9f2c7c55e06d5a8922fa1f5bff207fe3850b2e79d11a2390c"
+  },
+  {
+    "version": 69,
+    "name": "Mixed Take funding previews",
+    "checksum": "fdf6eca7a59af3b14b105c5f0761684b05193d1323627ae788f33bb8836c3189"
+  },
+  {
+    "version": 70,
+    "name": "Coordinated mixed Take investment journal",
+    "checksum": "1559a3abd619ff1bfbf1efefa900aa67c2464fac7735ad1dfa59ea99c6990098"
+  },
+  {
+    "version": 71,
+    "name": "Mixed Take terminal outcomes",
+    "checksum": "623321bd389607a4c42fb12df5863196c6b09b2430aeaf0dcbd672ab48599b35"
+  },
+  {
+    "version": 72,
+    "name": "Whole Take withdrawal journal",
+    "checksum": "99843d897a6a03ebbdebd41ff723797473a68a98a3f8b47543d5df75995008a5"
+  },
+  {
+    "version": 73,
+    "name": "Robinhood crypto intent journal and cash holds",
+    "checksum": "03d359fa49f8ba15e7f9b34a992416431020b400cc60347abd46ac5a0540a816"
+  },
+  {
+    "version": 74,
+    "name": "Crypto cumulative fill checkpoints",
+    "checksum": "f778af4a24d78809fb2210956d5baed69422778f1f7322764032a3bab3b1ab3f"
+  },
+  {
+    "version": 75,
+    "name": "Crypto instruments in the Take attribution ledger",
+    "checksum": "0f362f49a5086cdc8de544f10bcde66eb07f13180f8aa5f3e43f184295aca376"
+  },
+  {
+    "version": 76,
+    "name": "Crypto sell unit reservations",
+    "checksum": "1b900ca45b6fbaaba1b7df5b932737dd35ed729b6b98334eaac7bbad65041b27"
+  },
+  {
+    "version": 77,
+    "name": "Order cash reservation balance evidence",
+    "checksum": "ba4f1a4d8da224ad2d746d622b7ca5be5ea57ad5a71fa7c6c66234abe9e16dc7"
+  },
+  {
+    "version": 78,
+    "name": "Crypto position observations",
+    "checksum": "0337f3ed22d2ed0ba15ad4ba5367dae647a67ad6d2a511859e25c23ddacb943d"
+  },
+  {
+    "version": 79,
+    "name": "Crypto quote history and account order discovery",
+    "checksum": "5cd43e26fadd19bf97a52da9e3d37badc765d14f50d1a28f91934edf69fd0893"
+  },
+  {
+    "version": 80,
+    "name": "Observed Robinhood crypto model baselines",
+    "checksum": "a6cffe5863c4d8d608a40fb5f43fef6acdf11ae5ffe5ea78349ed4f00a4bf300"
+  },
+  {
+    "version": 81,
+    "name": "Daily market-wide earnings calendar",
+    "checksum": "f3eef56a45704f8485a946d52b99758a55af4dcac20f5b5a39c6916e0111d7ff"
+  },
+  {
+    "version": 82,
+    "name": "Stored PDF documents and scoped retrieval",
+    "checksum": "b0c1e20aa0c9c0e660b79e8b09f65d22f4bdb5b498488211eb9c05eda12885e8"
+  },
+  {
+    "version": 83,
+    "name": "Versioned custom data source configuration and sampled observations",
+    "checksum": "8a2ba1797fdad67d28003c45b537cfab706392e5e3e1514a03e9c313488efb9f"
+  },
+  {
+    "version": 84,
+    "name": "Controlled source price provenance and market metadata",
+    "checksum": "48034e246c37ecea8e1813d7213d952e078bfe2c428b472268b841cd2637c122"
+  },
+  {
+    "version": 85,
+    "name": "Configurable managed source polling",
+    "checksum": "f26e8e1b5c612796f1e8b7df22bd364f1bb7c7826476753b661588759c55d547"
+  },
+  {
+    "version": 86,
+    "name": "Account-owned source collection and Coinbase feed selection",
+    "checksum": "d60fb885920b88bc864176c34391bb54b3b60f2aa5dc715d5b45b4dbde45bf3a"
+  },
+  {
+    "version": 87,
+    "name": "Versioned read-only Take input bindings",
+    "checksum": "86b5408b8da546ca4bbc174b0b13c7f3f5318b71fdf004514523fd1480762c43"
+  },
+  {
+    "version": 88,
+    "name": "Coinbase sampled portfolio valuations",
+    "checksum": "a4d3d4ee1487f6a75dd4d16314774afe026479b13cadd76201490aaf74ec3555"
+  },
+  {
+    "version": 89,
+    "name": "Versioned strategy rule drafts",
+    "checksum": "914f79df718c105ff7ad45932bcc73377fe9cad229bcb4e6c7a0fdff6f71e553"
+  },
+  {
+    "version": 90,
+    "name": "Shadow rule state and action evidence",
+    "checksum": "6e632e976079d63bfd3c9aea3b94496c10808455c4317d94c057577f733044fd"
+  },
+  {
+    "version": 91,
+    "name": "Conditional rule context jobs",
+    "checksum": "f919c408bb3747e40370cef919f73461d1410d1b31cd7fc5f3cdee3f686eb5f3"
+  },
+  {
+    "version": 92,
+    "name": "Rule evidence retention and durable firing receipts",
+    "checksum": "6ef5d53c22460b7261b18fa30f003a16c88a8f4be0dd91cdc3c862c8324ea2bb"
+  },
+  {
+    "version": 93,
+    "name": "Chat rule proposals and accepted revisions",
+    "checksum": "2fde1276094623e77f5853954aff361895cc7c1c17061787749301e7762d970a"
+  },
+  {
+    "version": 94,
+    "name": "Opt-in rule notification delivery",
+    "checksum": "d8748ef0c1859a3e84d39a9820e0df0a42428801b672b4ae257bec7a14ba96f1"
+  },
+  {
+    "version": 95,
+    "name": "Coinbase rule rebalance execution",
+    "checksum": "7a312614937468eff6a8ac123b9eb3bd3421fcc6aa6b47243bec269bb232a8a0"
+  },
+  {
+    "version": 96,
+    "name": "Persistent rule trade approvals and quote revisions",
+    "checksum": "61d151e981c9bb1df72d8b0db936b5508f5eb50ac1e7bce40ffd7ea00b517e3c"
+  },
+  {
+    "version": 97,
+    "name": "Per-field market metadata update timestamps",
+    "checksum": "2ac0072923aea1add648aa4619262b9fab15f27c3248d03a6730291ad8c8fbe5"
+  },
+  {
+    "version": 98,
+    "name": "Durable accepted rule event inbox",
+    "checksum": "53a1624f3a4b43548a872c0e27fc4211ef68d70a351db18bcca3a9266beded7e"
+  },
+  {
+    "version": 99,
+    "name": "Rule inbox cleanup and request timeline indexes",
+    "checksum": "52e45fabe2e9922f015b9bef5d02dbc07b3b081f82474dcf0b8f58314f9fa66e"
+  },
+  {
+    "version": 100,
+    "name": "Shared action jobs and venues",
+    "checksum": "1cc7cf1ec138b57bd53d4ef132799bc4f744f482336a0599c4702e2f70aa340f"
+  },
+  {
+    "version": 101,
+    "name": "Rule agent runs wait for their Take",
+    "checksum": "da7d53c5d7b123a096e2c62b1988cf3b74cd1c25c8ebfb572a02809c6986bddb"
+  },
+  {
+    "version": 102,
+    "name": "Automatic run limits",
+    "checksum": "c745ae545db1960ad6ca345aff0a7e91c7a46c15b4353bdd497e9835c8b9fca9"
+  },
+  {
+    "version": 103,
+    "name": "Per-rule on and off",
+    "checksum": "d756c45db3637108fb25535cdb07cb8a46b6e2fbfb1bd601e8532db4aa6b8e45"
+  },
+  {
+    "version": 104,
+    "name": "Tool block reasons and previous definitions",
+    "checksum": "66cebdf56b79501cb23313faa753e2beecab1fedf5248df174bd9d1fddc9c81a"
+  },
+  {
+    "version": 105,
+    "name": "Tool change time",
+    "checksum": "e0404d33a4bb49300c62715062be5812be7e45374ca7373b72079692032dacfc"
+  },
+  {
+    "version": 106,
+    "name": "Trust a server's tool updates",
+    "checksum": "6c21fc70d53d45c7f65e5d2ddd25949bb5ca4f915ead4f14c79b2c07afaf6f8d"
+  },
+  {
+    "version": 107,
+    "name": "Dismiss rule-suggested Take changes",
+    "checksum": "6ce4ddf6662c81a266e716ee4b8eda109709219cd0038df36e752945c517c91e"
+  },
+  {
+    "version": 108,
+    "name": "Rules can suggest Take changes",
+    "checksum": "ff6e0f5bfc95c243a2cd797b21d692e39dcff59023e846f027e1ef4dbeb503cd"
+  },
+  {
+    "version": 109,
+    "name": "Robinhood rule trades",
+    "checksum": "7988dee4a295ce237d5ad1b95d9e5d70e295df95a91229049676738c35c4324c"
+  },
+  {
+    "version": 110,
+    "name": "Robinhood rule deploy cash",
+    "checksum": "4049857e105e17edd2ae86b265f21030c1bf596439eebda4fc8dcc4ec7efec8a"
+  },
+  {
+    "version": 111,
+    "name": "Watchlists across venues",
+    "checksum": "5e2ee9e67afedd3b673736245f311a7be719eb13c51d04e840b163753588ead7"
+  }
+]

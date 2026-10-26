@@ -1,0 +1,88 @@
+name: Desktop checks
+on:
+  workflow_call:
+    inputs:
+      platforms:
+        description: Release platform scope; manual checks cover all platforms
+        required: false
+        type: string
+        default: all
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# Keep the newest manual check per ref. The caller workflow name isolates release checks.
+concurrency:
+  group: desktop-checks-${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
+
+jobs:
+  checks:
+    strategy:
+      fail-fast: true
+      matrix:
+        os: ${{ fromJSON(inputs.platforms == 'macos' && '["macos-latest"]' || '["macos-latest","ubuntu-latest","windows-latest"]') }}
+    runs-on: ${{ matrix.os }}
+    # Windows disk-backed tests plus packaged-app verification exceed 30 minutes.
+    timeout-minutes: ${{ matrix.os == 'windows-latest' && 45 || 30 }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: node --test tests/release.test.mjs
+      - run: npm run build
+      - run: node --test tests/startup.test.mjs
+        timeout-minutes: 3
+        if: runner.os != 'Linux'
+      - run: xvfb-run -a node --test tests/startup.test.mjs
+        timeout-minutes: 3
+        if: runner.os == 'Linux'
+        env:
+          ELECTRON_DISABLE_SANDBOX: '1'
+      - run: npm test
+      - run: npm run test:recovery
+      - run: node --test --test-concurrency=1 tests/electron.test.mjs tests/shutdown.test.mjs tests/host.test.mjs tests/app-updates.test.mjs
+        if: runner.os != 'Linux'
+      - run: xvfb-run -a node --test --test-concurrency=1 tests/electron.test.mjs tests/shutdown.test.mjs tests/host.test.mjs tests/app-updates.test.mjs
+        if: runner.os == 'Linux'
+        env:
+          ELECTRON_DISABLE_SANDBOX: '1'
+      - name: Install browser for chat UI tests
+        run: npx playwright-core install --with-deps chromium
+      - name: Set chat test browser
+        shell: bash
+        run: node -e "console.log('CHROME_PATH=' + require('playwright-core').chromium.executablePath())" >> "$GITHUB_ENV"
+      - name: Chat and take integration tests
+        if: runner.os != 'Linux'
+        run: node --test --test-concurrency=1 tests/chat/integration/*.test.mjs
+      - name: Chat and take integration tests (Linux)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a node --test --test-concurrency=1 tests/chat/integration/*.test.mjs
+        env:
+          ELECTRON_DISABLE_SANDBOX: '1'
+      # Reuse the production bundle built above; packaging still runs beforePack.
+      - run: npx electron-builder --dir --publish never
+        if: runner.os != 'Linux'
+      - name: Test packaged macOS app
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          app_path=$(find dist -path '*/Contents/MacOS/Opentake' -type f -print -quit)
+          test -n "$app_path"
+          EARLYBIRD_TEST_APP="$PWD/$app_path" node --test tests/electron.test.mjs
+      - name: Test packaged Windows app
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $appPath = Join-Path $PWD 'dist/win-unpacked/Opentake.exe'
+          if (!(Test-Path $appPath)) { throw "Packaged Windows executable missing" }
+          $env:EARLYBIRD_TEST_APP = $appPath
+          node --test tests/electron.test.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

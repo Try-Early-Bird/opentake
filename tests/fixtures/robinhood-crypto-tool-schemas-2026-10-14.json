@@ -1,0 +1,2877 @@
+{
+  "ok": true,
+  "tools": [
+    {
+      "name": "cancel_crypto_order",
+      "description": "Cancel an open crypto order by order_id. Always confirm with the user before calling. Resolve order_id via get_crypto_orders if the user refers to it by description; pass the same rhs_account_number that owns the order. Cancellation may be rejected if the order has already filled, was already canceled, or is otherwise ineligible. Cancels placed orders only \u2014 to withdraw a pending trade approval, use decline_trade_approval instead.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "rhs_account_number": {
+            "type": "string",
+            "description": "Numeric brokerage account number (the 'rhs_account_number' field on get_accounts entries \u2014 distinct from the alphanumeric 'account_number'). The order must belong to this account. Required."
+          },
+          "order_id": {
+            "type": "string",
+            "description": "Order UUID from get_crypto_orders. Must belong to rhs_account_number. Required."
+          }
+        },
+        "required": [
+          "rhs_account_number",
+          "order_id"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "object",
+            "properties": {
+              "accepted": {
+                "type": "boolean",
+                "description": "True when the cancel request was accepted by the broker. Because cancellation is asynchronous, this does NOT mean the order is already canceled \u2014 confirm via get_crypto_orders."
+              }
+            },
+            "description": "Tool-specific result payload; see the inner properties for fields.",
+            "required": [
+              "accepted"
+            ],
+            "additionalProperties": false
+          },
+          "guide": {
+            "type": "string",
+            "description": "A pending trade approval (returned by place_crypto_order as approval) is not an order and cannot be canceled here \u2014 withdraw it with decline_trade_approval, passing its approval_id (from the place_crypto_order approval response, or look it up with get_trade_approvals) and the account's alphanumeric account_number from get_accounts, not the numeric rhs_account_number this tool takes. accepted=true means the cancel request was accepted, NOT that the order is already canceled \u2014 cancellation is asynchronous. To confirm the final state, call get_crypto_orders: a 'canceled' state (state_group 'closed') confirms the cancel; a filled state means a fill raced the cancel. Offer to check the final state. On error, the cancel was rejected outright \u2014 report it verbatim."
+          }
+        },
+        "required": [
+          "data",
+          "guide"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_crypto_account_onboarding_info",
+      "description": "Get the link a user opens to sign the crypto agreement and open a crypto account. Call when the user wants to trade crypto but has no crypto account.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "object",
+            "properties": {
+              "already_onboarded": {
+                "type": "boolean",
+                "description": "True when the user already has at least one crypto account \u2014 onboarding_url is empty and no signup is needed. False when they have none and should open the link to sign up."
+              },
+              "onboarding_url": {
+                "type": "string",
+                "description": "Link for the user to sign the crypto agreement and open a crypto account. The user must log in to their Robinhood account at the link to sign. Present it as a tappable link; never call it programmatically. Empty when already_onboarded is true."
+              }
+            },
+            "description": "Tool-specific result payload; see the inner properties for fields.",
+            "required": [
+              "already_onboarded"
+            ],
+            "additionalProperties": false
+          },
+          "guide": {
+            "type": "string",
+            "description": "If already_onboarded is true, the user already has a crypto account, so no new signup is needed \u2014 do NOT present a link (the signup link cannot create or re-activate an account when one already exists). Tell them they already have a crypto account; do not claim it is active or ready to trade. If they say they still cannot trade crypto, their account may be deactivated, which is a separate reactivation flow this tool does not cover \u2014 direct them to Robinhood support rather than the link. Otherwise, send onboarding_url to the user as a tappable link, and tell them they must log in to their Robinhood account at the link to review and sign the crypto user agreement. After they sign, their crypto account(s) are provisioned \u2014 this tool does not create the account or sign on the user's behalf. Signing provisions crypto accounts for all of the user's eligible brokerage accounts, so a user who has an agentic brokerage account also gets an agentic crypto account. Once the user confirms they have finished, call get_accounts again with a fresh request to pick up the new crypto account before retrying; do not reuse a prior get_accounts result, as the account does not exist until the user completes this flow."
+          }
+        },
+        "required": [
+          "data",
+          "guide"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_crypto_orders",
+      "description": "List crypto order history for an account \u2014 newest first. Open and closed orders, including fills, cancellations, and rejections. Pass order_id to retrieve a single order by UUID.\n\nFiltering tips:\n- Prefer narrow queries: combine state (or state_group), symbol, and/or created_at_gte for specific questions.\n- created_at_gte: interpret relative times in the user's timezone, convert to UTC before sending.\n- updated_at_gte: useful when polling for order fills or state transitions.\n- symbol triggers a symbol\u2192currency_pair_id lookup; omit it if you don't need it.\n\nWhen the user asks broadly for \"orders\" or \"my orders\" without naming an asset class or order type, call get_equity_orders, get_option_orders, get_crypto_orders, and get_advanced_orders in parallel so OCO groups are not omitted.\n\nFor requests spanning all accounts, re-fetch the account list with get_accounts first \u2014 a list from earlier in the conversation may be missing newly created accounts.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "rhs_account_number": {
+            "type": "string",
+            "description": "Numeric brokerage account number (the 'rhs_account_number' field on get_accounts entries \u2014 distinct from the alphanumeric 'account_number'). Required."
+          },
+          "order_id": {
+            "type": "string",
+            "description": "Filter to a single order by UUID. The response shape is unchanged (results[] with at most one entry); empty when the order does not belong to the account."
+          },
+          "state": {
+            "type": "string",
+            "description": "Filter by single state: queued, confirmed, partially_filled, filled, canceled, rejected, failed, voided. For open-vs-closed shortcuts, use state_group instead."
+          },
+          "state_group": {
+            "type": "string",
+            "description": "Filter by state group: 'open' or 'closed'. Quick shortcut \u2014 'open' covers queued/confirmed/partially_filled, 'closed' covers filled/canceled/rejected/failed/voided. Mutually exclusive with state."
+          },
+          "side": {
+            "type": "string",
+            "description": "Filter by side: 'buy' or 'sell'."
+          },
+          "symbol": {
+            "type": "string",
+            "description": "Filter by crypto symbol (e.g. 'BTC', 'ETH', or 'BTC-USD'). Triggers a symbol\u2192currency_pair_id lookup before the orders call."
+          },
+          "created_at_gte": {
+            "type": "string",
+            "description": "Lower bound (inclusive) on created_at. ISO 8601 UTC; naive values are interpreted as UTC."
+          },
+          "updated_at_gte": {
+            "type": "string",
+            "description": "Lower bound (inclusive) on updated_at. ISO 8601 UTC. Useful for polling for fills \u2014 each state transition bumps updated_at."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor. Omit for the first page; for the next page, pass the prior response's next value back verbatim."
+          }
+        },
+        "required": [
+          "rhs_account_number"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "object",
+            "properties": {
+              "rhs_account_number": {
+                "type": "string",
+                "description": "Echo of the brokerage account number this page was queried with. Every order in results belongs to this account \u2014 when querying multiple accounts in parallel, attribute orders using this echo, not memory of which call was which."
+              },
+              "crypto_account_number": {
+                "type": "string",
+                "description": "Crypto account number (e.g. 'RHC1234567') these orders belong to. Present THIS as the account to the user \u2014 not the brokerage account number used to look it up. When absent, refer to the account as the user's linked crypto account."
+              },
+              "results": {
+                "type": [
+                  "null",
+                  "array"
+                ],
+                "items": {
+                  "type": [
+                    "null",
+                    "object"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "Order UUID. Needed by cancel_crypto_order (M2.2)."
+                    },
+                    "ref_id": {
+                      "type": "string",
+                      "description": "Idempotency key the order is stored under, unique per account. Usually the ref_id passed to place_crypto_order; an order placed through a trade approval carries that approval's id instead. Omitted when the order has none."
+                    },
+                    "account_id": {
+                      "type": "string",
+                      "description": "Crypto account UUID this order belongs to. Matches the account_id on get_crypto_positions rows."
+                    },
+                    "currency_pair_id": {
+                      "type": "string",
+                      "description": "Pair UUID (e.g. BTC-USD). Pass to get_crypto_quotes for current price, or match against get_currency_pairs.id."
+                    },
+                    "currency_code": {
+                      "type": "string",
+                      "description": "Asset currency code (e.g. 'BTC', 'ETH'). Useful for grouping orders by coin without joining against get_currency_pairs."
+                    },
+                    "side": {
+                      "type": "string",
+                      "description": "'buy' or 'sell'."
+                    },
+                    "type": {
+                      "type": "string",
+                      "description": "'market', 'limit', 'stop_loss', or 'stop_limit'. 'stop_loss' is a stop-triggered market order \u2014 despite the name it applies to buy stops too; the equity/option tools call the same concept 'stop_market'. ALWAYS call these by their app names when speaking to the user, including when listing what types are supported: 'stop_loss' is a 'stop order' and 'stop_limit' a 'stop limit order'; the raw values are tool inputs only."
+                    },
+                    "state": {
+                      "type": "string",
+                      "description": "Raw lifecycle state: new, queued, unconfirmed, confirmed, partially_filled, filled, canceled, rejected, failed, voided. Combine with derived_state for clearer end-state classification."
+                    },
+                    "derived_state": {
+                      "type": "string",
+                      "description": "Normalized lifecycle classification, e.g. 'open' / 'closed' / similar shorthand the upstream computes from raw state + fills. Prefer over state for user-facing summaries."
+                    },
+                    "state_group": {
+                      "type": "string",
+                      "description": "'open' or 'closed' \u2014 the headline answer to 'is this order still working?'."
+                    },
+                    "time_in_force": {
+                      "type": "string",
+                      "description": "'gtc' (good till canceled), 'gfd' (good for day), 'ioc' (immediate or cancel), 'gfw' (good for week), 'gfm' (good for month)."
+                    },
+                    "quantity": {
+                      "type": [
+                        "null",
+                        "string"
+                      ],
+                      "description": "Originally-requested asset quantity. On dollar-based orders the server derives it at placement: from the quote for market and from the stop price for stop_loss (treat those as estimated until fills confirm them), and from the limit price for limit/stop_limit (exact at placement)."
+                    },
+                    "cumulative_quantity": {
+                      "type": "string",
+                      "description": "Total asset quantity filled so far. Less than quantity while partially filled; equal once filled."
+                    },
+                    "canceled_quantity": {
+                      "type": [
+                        "null",
+                        "string"
+                      ],
+                      "description": "Quantity that was canceled before fill (only populated on partial-fill-then-cancel paths)."
+                    },
+                    "price": {
+                      "type": [
+                        "null",
+                        "string"
+                      ],
+                      "description": "Order price (interpretation depends on type \u2014 limit price for limit; for stop_loss it is the collared worst-case execution bound, NOT the trigger, which lives in stop_price; for market it is the raw quote side-price on a preview_crypto_order response \u2014 the same price the app displays, NOT collared \u2014 but the collared worst-case execution bound on placed orders; stablecoin pairs are never collared, so their preview and placed prices both carry the raw quote). Use limit_price / stop_price for the unambiguous fields."
+                    },
+                    "limit_price": {
+                      "type": [
+                        "null",
+                        "string"
+                      ],
+                      "description": "Limit price for limit / stop_limit orders. Null for market / stop_loss."
+                    },
+                    "stop_price": {
+                      "type": [
+                        "null",
+                        "string"
+                      ],
+                      "description": "Stop trigger price for stop_loss / stop_limit orders. Null for market / limit."
+                    },
+                    "average_price": {
+                      "type": [
+                        "null",
+                        "string"
+                      ],
+                      "description": "Volume-weighted average fill price across executions. Null until the first fill."
+                    },
+                    "entered_price": {
+                      "type": [
+                        "null",
+                        "string"
+                      ],
+                      "description": "Price the user originally entered (pre-collaring). Different from limit_price after server-side collaring adjusts the order."
+                    },
+                    "rounded_executed_notional": {
+                      "type": [
+                        "null",
+                        "string"
+                      ],
+                      "description": "Total notional filled so far in the quote currency, rounded to 2 decimals."
+                    },
+                    "executions": {
+                      "type": [
+                        "null",
+                        "array"
+                      ],
+                      "items": {
+                        "type": [
+                          "null",
+                          "object"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "description": "Execution UUID."
+                          },
+                          "price": {
+                            "type": "string",
+                            "description": "Reported fill price per unit asset (e.g. USD per BTC). For the price the user actually paid after venue adjustments, use effective_price."
+                          },
+                          "effective_price": {
+                            "type": "string",
+                            "description": "Per-unit price after venue fees or price adjustments are applied \u2014 closer to the user's realized fill economics than price."
+                          },
+                          "quantity": {
+                            "type": "string",
+                            "description": "Asset quantity filled in this execution."
+                          },
+                          "notional": {
+                            "type": "string",
+                            "description": "effective_price * quantity, rounded to 2 decimals where applicable."
+                          },
+                          "exchange_name": {
+                            "type": "string",
+                            "description": "Routing venue name. Treat as informational; do not surface unless the user asks about routing."
+                          },
+                          "timestamp": {
+                            "type": "string",
+                            "description": "When the fill occurred (UTC)."
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "price",
+                          "effective_price",
+                          "quantity",
+                          "notional",
+                          "timestamp"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "description": "Per-fill detail. Reference for per-execution timing or price questions; for headline 'what did this fill at?' use average_price."
+                    },
+                    "initiator_type": {
+                      "type": "string",
+                      "description": "Source that placed the order: 'api_trading', 'trading_view', 'recurring', 'paycheck', 'rh_assistant', 'agentic_trading' (when nummus adds that enum value), or one of the internal crypto-specific values. Tells the user whether they placed this order via app, API, recurring buy, or an agent."
+                    },
+                    "speculative": {
+                      "type": "boolean",
+                      "description": "True when the order was created as a speculative pre-trade check (no upstream side effect). Should always be false on real placed orders; populated read-only by upstream."
+                    },
+                    "created_at": {
+                      "type": "string",
+                      "description": "When the order was created (UTC)."
+                    },
+                    "updated_at": {
+                      "type": "string",
+                      "description": "Last server-side state update (UTC) \u2014 fill, cancel, reject, etc."
+                    },
+                    "canceled_at": {
+                      "type": [
+                        "null",
+                        "string"
+                      ],
+                      "description": "When the cancel was acknowledged. Null when the order has not been canceled."
+                    },
+                    "routing": {
+                      "type": "string",
+                      "description": "How the order is routed for execution. Present verbatim as the routing line item; absent when routing information is unavailable."
+                    },
+                    "rounded_estimated_notional_with_estimated_fee": {
+                      "type": [
+                        "null",
+                        "string"
+                      ],
+                      "description": "Estimated total cost (buy) or net proceeds (sell) in the quote currency, with ONLY the estimated fee already included. It does NOT include any additional taxes or deductions."
+                    },
+                    "rounded_uncollared_estimated_notional_with_estimated_fee": {
+                      "type": [
+                        "null",
+                        "string"
+                      ],
+                      "description": "Same as rounded_estimated_notional_with_estimated_fee but before price collaring. Null when collaring does not apply."
+                    },
+                    "rounded_executed_notional_with_fee": {
+                      "type": [
+                        "null",
+                        "string"
+                      ],
+                      "description": "Notional actually executed so far only including fees without netting additional taxes, in the quote currency. Grows as fills come in; 0 before the first fill. For the executed figure net of all taxes and fees use net_rounded_executed_notional."
+                    },
+                    "total_executed_notional": {
+                      "type": [
+                        "null",
+                        "string"
+                      ],
+                      "description": "Total executed notional so far only including fees without netting additional taxes. Null until there are fills."
+                    },
+                    "net_rounded_estimated_notional": {
+                      "type": [
+                        "null",
+                        "string"
+                      ],
+                      "description": "Estimated total cost (buy) or credit (sell) net of ALL taxes and fees. On a preview, present this as the estimated total cost or credit line item alongside the separate estimated_fee value. Never subtract the fee or taxes from it again. Null when an order has fills."
+                    },
+                    "net_rounded_executed_notional": {
+                      "type": [
+                        "null",
+                        "string"
+                      ],
+                      "description": "Executed total cost (buy) or credit (sell) net of ALL taxes and fees \u2014 the definitive amount actually debited or credited. Null before the first fill. Grows as fills come in. Never subtract the fee or any taxes from it again."
+                    },
+                    "fees": {
+                      "type": [
+                        "null",
+                        "array"
+                      ],
+                      "items": {
+                        "type": [
+                          "null",
+                          "object"
+                        ],
+                        "properties": {
+                          "fee_structure": {
+                            "type": "string",
+                            "description": "How the fee was computed (e.g. a fixed percentage or a volume-tiered rate)."
+                          },
+                          "fee_data": {
+                            "type": [
+                              "null",
+                              "object"
+                            ],
+                            "properties": {
+                              "fee_type": {
+                                "type": "string",
+                                "description": "Fee category (e.g. a transaction/spread fee)."
+                              },
+                              "fee_amount": {
+                                "type": [
+                                  "null",
+                                  "string"
+                                ],
+                                "description": "Fee amount in the quote currency (USD)."
+                              },
+                              "fee_ratio": {
+                                "type": [
+                                  "null",
+                                  "string"
+                                ],
+                                "description": "Rate this fee was computed at, when applicable."
+                              }
+                            },
+                            "description": "This fee's amount, type, and rate.",
+                            "additionalProperties": false
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "description": "Itemized fee breakdown for exchange-routed orders. Empty or absent when the order carries no itemized fees."
+                    },
+                    "tax_withholding": {
+                      "type": [
+                        "null",
+                        "object"
+                      ],
+                      "properties": {
+                        "withholding_rate": {
+                          "type": "string",
+                          "description": "Withholding rate preformatted as a percent (e.g. '24%'), aggregated across the federal and any state portion. Print verbatim. Absent when no rate is available."
+                        },
+                        "estimated_withholding_amount": {
+                          "type": [
+                            "null",
+                            "string"
+                          ],
+                          "description": "Estimated USD to be withheld from this sell's proceeds. Present only while cumulative_quantity is 0. Exactly one of this and total_withholding_amount is ever present, so read the one that is there."
+                        },
+                        "total_withholding_amount": {
+                          "type": [
+                            "null",
+                            "string"
+                          ],
+                          "description": "Actual USD withheld from proceeds across fills so far (final once fully filled). Present only once cumulative_quantity is positive. Exactly one of this and estimated_withholding_amount is ever present, so read the one that is there."
+                        }
+                      },
+                      "description": "Backup withholding on this sell order's proceeds. Present only when withholding applies (sell orders for subject users; never on IRA accounts) \u2014 when absent, do not mention withholding. amount and withholding_rate are the display-ready figure and percent.",
+                      "additionalProperties": false
+                    },
+                    "fee": {
+                      "type": [
+                        "null",
+                        "string"
+                      ],
+                      "description": "Fee for this order in the quote currency (USD on USD-quoted pairs) \u2014 an estimate before any fill; once filled, the amount collected on fills so far (final when fully filled). Absent when the order carries no itemized fees (typical of Market Maker Routing) \u2014 treat absence as no fee data, not a $0 charge."
+                    },
+                    "fee_rate": {
+                      "type": "string",
+                      "description": "Rate this order's fee was computed at, preformatted: the bare percent on single-rate fee pricing (e.g. '0.95%'), suffixed with the liquidity outcome on maker/taker-priced accounts \u2014 e.g. '0.05% maker', '0.1% taker', or '0.07% blended' for orders filled partly maker and partly taker; accounts using reduced/standard fee names get '0.05% reduced' and '0.1% standard' instead \u2014 reduced is the maker rate and standard is the taker rate, so use reduced/standard with those accounts. Absent when no fee rate applies."
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "account_id",
+                    "currency_pair_id",
+                    "side",
+                    "type",
+                    "state",
+                    "time_in_force",
+                    "quantity",
+                    "cumulative_quantity",
+                    "created_at",
+                    "updated_at"
+                  ],
+                  "additionalProperties": false
+                },
+                "description": "Crypto orders on this page, newest first. Empty when the cursor has no rows."
+              },
+              "next": {
+                "type": "string",
+                "description": "Opaque cursor for the next page \u2014 NOT a URL. When non-empty more pages exist: call this tool again with cursor set to this value verbatim, leaving the other arguments unchanged. Empty on the last page."
+              }
+            },
+            "description": "Tool-specific result payload; see the inner properties for fields.",
+            "required": [
+              "rhs_account_number",
+              "results"
+            ],
+            "additionalProperties": false
+          },
+          "guide": {
+            "type": "string",
+            "description": "For the headline answer to \"is this order still working?\", use state_group ('open' vs 'closed'); raw state has finer granularity if the user asks why. For the fill price the user cares about, use average_price (VWAP across fills). cumulative_quantity vs quantity tells \"how much filled?\"; canceled_quantity only appears on partial-fill-then-cancel paths. Asset symbol is currency_code; pair UUID is currency_pair_id. For current market, call get_crypto_quotes with the pair symbol (construct as currency_code + \"-USD\" for USD-quoted pairs, or look up via get_currency_pairs) \u2014 get_crypto_quotes takes the symbol, NOT currency_pair_id. initiator_type tells how the order was placed (app / API / recurring / agent) \u2014 surface it when the agent didn't place this order. Per-fill executions[] are omitted from list responses to keep the page sized for an agent's context window; pass order_id to retrieve a single order with executions populated. Present currency_code, side, type (ALWAYS translated to the app's name: stop_loss = \"stop order\", stop_limit = \"stop limit order\" \u2014 never show the raw stop_loss/stop_limit values to the user), state, quantity (or cumulative_quantity when partially filled), average_price once filled, backup withholding on a sell whenever tax_withholding is present, created_at, and id when cancellation may follow; suppress other fields unless asked. When presenting multiple orders, add a Fee column when any order on the page carries fee or fee_rate \u2014 the fee value verbatim (label it estimated when the order has no fills yet), with the fee_rate value appended verbatim in parentheses when present, e.g. '$1.23 (0.05% maker)' or '$1.23 (0.95%)' \u2014 fee_rate carries its own maker/taker/reduced/standard/blended qualifier, never re-derive or re-label it; an order with fee_rate but no fee shows the bare rate; '-' for orders with neither; omit the column entirely when no order on the page has either. For a single order, state the fee and rate the same way when present. Backup withholding: show whichever of tax_withholding.estimated_withholding_amount / total_withholding_amount is present (exactly one ever is), labeled \"Estimated backup withholding\" for the estimate and \"Backup withholding\" for the total, with the tax_withholding.withholding_rate value appended verbatim in parentheses, e.g. '$23.88 (24%)'; on a partially filled order phrase the total as withheld so far \u2014 never as final, and never compute an estimate for the remainder. When presenting multiple orders, add a Withholding column only when at least one order on the page carries tax_withholding, with '-' for orders that do not; when none does, do not mention withholding at all. Answer total cost/credit questions from whichever net_* field the order carries, never from rounded_executed_notional / rounded_estimated_notional_with_estimated_fee / total_executed_notional \u2014 those are gross of taxes like backup withholding and will overstate a subject order. An order with no tax_withholding has no withholding \u2014 never raise the subject for it or show it as $0. Every order on this page belongs to the account echoed in rhs_account_number / crypto_account_number \u2014 when querying several accounts in parallel, attribute each order from its own response's echo, never from memory; identify the account to the user by crypto_account_number."
+          }
+        },
+        "required": [
+          "data",
+          "guide"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_crypto_positions",
+      "description": "List open crypto positions for a specific brokerage account. Returns asset, quantity, transferable amount, and cost-basis breakdown.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "rhs_account_number": {
+            "type": "string",
+            "description": "Numeric brokerage account number (the 'rhs_account_number' field on get_accounts entries \u2014 distinct from the alphanumeric 'account_number'). Required. Do NOT pass rhc_account_number (the linked crypto account, labeled 'Crypto Account' on get_accounts) \u2014 that is a different identifier space and will return no positions."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor. Omit for the first page; for the next page, pass the prior response's next value back verbatim."
+          }
+        },
+        "required": [
+          "rhs_account_number"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "object",
+            "properties": {
+              "results": {
+                "type": [
+                  "null",
+                  "array"
+                ],
+                "items": {
+                  "type": [
+                    "null",
+                    "object"
+                  ],
+                  "properties": {
+                    "account_id": {
+                      "type": "string",
+                      "description": "Brokerage account UUID this position belongs to."
+                    },
+                    "currency": {
+                      "type": [
+                        "null",
+                        "object"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "description": "Currency ticker (e.g. 'BTC', 'ETH', 'USD')."
+                        },
+                        "name": {
+                          "type": "string",
+                          "description": "Full currency name (e.g. 'Bitcoin', 'Ethereum')."
+                        },
+                        "type": {
+                          "type": "string",
+                          "description": "'cryptocurrency' for crypto assets, 'fiat' for cash currencies."
+                        }
+                      },
+                      "description": "Asset currency this position holds. Use currency.code as the asset symbol.",
+                      "required": [
+                        "code",
+                        "name",
+                        "type"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "currency_pair_id": {
+                      "type": "string",
+                      "description": "UUID of the canonical pair quoted against USD (e.g. BTC-USD). Pass in the currency_pair_ids array to add_to_watchlist / remove_from_watchlist. For current price call get_crypto_quotes with the pair SYMBOL (construct as currency.code + \"-USD\"), not this UUID. Empty when no such pair exists for this asset (rare)."
+                    },
+                    "quantity": {
+                      "type": "string",
+                      "description": "Total quantity held in asset units (e.g. BTC), net of pending withdrawal holds only. For the amount the user can actually sell right now, use 'quantity_transferable'."
+                    },
+                    "quantity_transferable": {
+                      "type": "string",
+                      "description": "Quantity available to sell or transfer right now \u2014 net of open sell orders, pending withdrawals, quarantine, and any other holds. This is the correct field for 'how much can I sell?', including for crypto purchased on instant funds. Strictly \u2264 'quantity'."
+                    },
+                    "quantity_held_for_sell": {
+                      "type": "string",
+                      "description": "Quantity locked by open outgoing sell orders."
+                    },
+                    "cost_bases": {
+                      "type": [
+                        "null",
+                        "array"
+                      ],
+                      "items": {
+                        "type": [
+                          "null",
+                          "object"
+                        ],
+                        "properties": {
+                          "direct_quantity": {
+                            "type": "string",
+                            "description": "Quantity covered by direct_cost_basis."
+                          },
+                          "direct_cost_basis": {
+                            "type": "string",
+                            "description": "Total cost basis for direct_quantity, in USD. Zero means the basis for these units is not known, not that they were free."
+                          },
+                          "intraday_quantity": {
+                            "type": "string",
+                            "description": "Quantity acquired today and still held."
+                          },
+                          "intraday_cost_basis": {
+                            "type": "string",
+                            "description": "Total cost basis for intraday_quantity."
+                          }
+                        },
+                        "required": [
+                          "direct_quantity",
+                          "direct_cost_basis",
+                          "intraday_quantity",
+                          "intraday_cost_basis"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "description": "Cost basis for average buy price and P&L, in USD; normally one entry, absent when no cost basis is known. If more than one entry is present, report each separately and do not add direct_cost_basis across entries."
+                    }
+                  },
+                  "required": [
+                    "account_id",
+                    "currency",
+                    "quantity",
+                    "quantity_transferable",
+                    "quantity_held_for_sell"
+                  ],
+                  "additionalProperties": false
+                },
+                "description": "Open crypto positions on this page. Empty when the cursor has no rows."
+              },
+              "next": {
+                "type": "string",
+                "description": "Opaque cursor for the next page \u2014 NOT a URL. When non-empty more pages exist: call this tool again with cursor set to this value verbatim, leaving the other arguments unchanged. Empty on the last page."
+              }
+            },
+            "description": "Tool-specific result payload; see the inner properties for fields.",
+            "required": [
+              "results"
+            ],
+            "additionalProperties": false
+          },
+          "guide": {
+            "type": "string",
+            "description": "Sellable quantity: use `quantity_transferable`, not `quantity` \u2014 `quantity_transferable` is the amount available to sell right now (already nets out open sell orders, pending withdrawals, holds, quarantine, and instant-funds restrictions); `quantity` only subtracts pending withdrawals. The two are equal in the common case but diverge when there are open sells or unsettled instant buys. Asset name comes from currency.code; for current price, call get_crypto_quotes with the pair symbol (construct as `currency.code + \"-USD\"` for USD-quoted pairs, or look up via get_currency_pairs) \u2014 note that get_crypto_quotes takes the symbol, NOT currency_pair_id. Per-unit average buy price for an entry is direct_cost_basis / direct_quantity; when direct_cost_basis is 0, say the basis is unknown rather than reporting a $0 average. direct_quantity is in asset units, so it is safe to sum across entries. The total can differ from the holding's quantity in either direction; report the difference without asserting a cause (possible reasons include transfers or rewards with no captured cost basis, a pending withdrawal, a recent sell still settling, or lot records still being reconciled). When the total is less than quantity, the average buy price covers only that subset of the units. The intraday_* fields isolate today's still-held portion when the user asks about today specifically; they can lag a very recent fill. Suppress cost_bases when not asked. No market price here \u2014 for current value or P&L, multiply the get_crypto_quotes result by quantity."
+          }
+        },
+        "required": [
+          "data",
+          "guide"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_crypto_quotes",
+      "description": "Get real-time bid/ask/mark prices plus the previous close for one or more crypto pair symbols (e.g. BTC-USD).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "symbols": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "One or more crypto pair symbols (e.g. 'BTC-USD', 'ETH-USD'). Hyphenated and unhyphenated forms are both accepted on input; the response symbol field comes back unhyphenated."
+          },
+          "timezone": {
+            "type": "string",
+            "description": "Optional IANA timezone name (e.g. 'America/New_York', 'America/Los_Angeles') that anchors the previous-close (open_price) day boundary to the user's local midnight and sets the timezone the response timestamps (bid_time, ask_time, updated_at) are rendered in. Pass ONLY when the user's timezone is known from context \u2014 do NOT guess it, infer it from language, or default it. When omitted, the previous close is anchored to midnight US Eastern and timestamps are rendered in US Eastern. Must be a valid IANA name \u2014 not an abbreviation ('PST'), a UTC offset ('-08:00'), or 'Local'."
+          },
+          "rhs_account_number": {
+            "type": "string",
+            "description": "Optional numeric brokerage account number (the 'rhs_account_number' from get_accounts). When supplied, bid/ask/mark and the previous close are priced on this account's execution routing \u2014 the venues its orders actually fill at \u2014 and the applied routing is echoed in routing. When omitted, prices use the caller's own routing (it is set at the user level, so any of their crypto accounts yields the same routing). A caller with no crypto account, or an account that cannot be resolved, receives market-maker-routed pricing. Pairs that only trade on market-maker routing are always priced on it, whatever the account's routing, so routing can differ between results in one response."
+          }
+        },
+        "required": [
+          "symbols"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "object",
+            "properties": {
+              "results": {
+                "type": [
+                  "null",
+                  "array"
+                ],
+                "items": {
+                  "type": [
+                    "null",
+                    "object"
+                  ],
+                  "properties": {
+                    "symbol": {
+                      "type": "string",
+                      "description": "Crypto pair symbol returned by upstream in unhyphenated form (e.g. 'BTCUSD'). To cross-reference with get_currency_pairs.symbol (which is hyphenated, e.g. 'BTC-USD'), strip the hyphen from that field or insert one before the last 3 characters of this one."
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Currency-pair instrument UUID. Pass in the currency_pair_ids array to add_to_watchlist / remove_from_watchlist \u2014 no separate get_currency_pairs call needed just to get the UUID. Also matches get_currency_pairs.id and the currency_pair_id on get_crypto_positions rows."
+                    },
+                    "bid_price": {
+                      "type": "string",
+                      "description": "Highest current buy-order price. Zero when the book is closed or unavailable \u2014 do NOT present zero as a price."
+                    },
+                    "bid_time": {
+                      "type": [
+                        "null",
+                        "string"
+                      ],
+                      "description": "Timestamp of bid_price, rendered in the request timezone (the get_crypto_quotes 'timezone' parameter; US Eastern when not supplied). Present when the upstream included side timestamps; otherwise absent."
+                    },
+                    "ask_price": {
+                      "type": "string",
+                      "description": "Lowest current sell-order price. Zero when the book is closed or unavailable."
+                    },
+                    "ask_time": {
+                      "type": [
+                        "null",
+                        "string"
+                      ],
+                      "description": "Timestamp of ask_price, rendered in the request timezone (the get_crypto_quotes 'timezone' parameter; US Eastern when not supplied). Present when the upstream included side timestamps; otherwise absent."
+                    },
+                    "mark_price": {
+                      "type": "string",
+                      "description": "Reference midpoint computed from bid and ask. Zero when both sides of the book are unavailable."
+                    },
+                    "open_price": {
+                      "type": "string",
+                      "description": "Previous close \u2014 the reference midpoint (same bid/ask-mid basis as mark_price) at the midnight day boundary of the request timezone (the get_crypto_quotes 'timezone' parameter; US Eastern when not supplied). Crypto trades continuously, so this boundary price is the prior day's close. Resets daily; NOT a last-trade price."
+                    },
+                    "routing": {
+                      "type": "string",
+                      "description": "Execution routing these prices are quoted on, matching the routing on get_crypto_orders rows. bid_price, ask_price, mark_price, and open_price are all priced on this routing. Absent when routing information is unavailable."
+                    },
+                    "updated_at": {
+                      "type": "string",
+                      "description": "Time this snapshot was last refreshed, rendered in the request timezone (the get_crypto_quotes 'timezone' parameter; US Eastern when not supplied) \u2014 the same zone that anchors open_price. Use to judge freshness \u2014 when stale, phrase as 'as of <time>' rather than 'current'."
+                    }
+                  },
+                  "required": [
+                    "symbol",
+                    "id",
+                    "bid_price",
+                    "ask_price",
+                    "mark_price",
+                    "open_price",
+                    "updated_at"
+                  ],
+                  "additionalProperties": false
+                },
+                "description": "One entry per requested symbol with live market data. Empty if no symbol resolved."
+              }
+            },
+            "description": "Tool-specific result payload; see the inner properties for fields.",
+            "required": [
+              "results"
+            ],
+            "additionalProperties": false
+          },
+          "guide": {
+            "type": "string",
+            "description": "Current price: prefer mark_price when both sides of the book are populated; if mark_price is zero, fall back to the most recent of bid_time / ask_time and quote the side that updated last. Drop bid or ask when zero \u2014 the book is unavailable on that side. Use updated_at to judge freshness; if it is more than a few seconds stale, phrase as \"as of <time>\" rather than \"current\". open_price is the previous close \u2014 in continuous crypto the midnight boundary price is the prior day's close. That boundary is midnight in the request timezone (the 'timezone' parameter), or US Eastern when none is supplied; response timestamps carry that same timezone's offset, so quote \"as of\" times in it directly. For change vs the previous close, compute (mark_price - open_price) / open_price. The response symbol comes back unhyphenated (e.g. 'BTCUSD'); the canonical form from get_currency_pairs is hyphenated ('BTC-USD') \u2014 strip the hyphen to cross-reference. bid/ask/mark reflect the execution routing reported in routing, resolved per pair: pairs eligible for the account's routing use it (the supplied account's routing when rhs_account_number was given, otherwise the caller's user-level routing; market maker routing when the caller has no crypto account), and pairs that only trade on market maker routing use that regardless of the account, so routing can differ between results in one response. Results follow the requested symbol order. This is informational; place_order routing is selected per account at order time."
+          }
+        },
+        "required": [
+          "data",
+          "guide"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_currency_pairs",
+      "description": "List Robinhood-supported crypto currency pairs (e.g. BTC-USD, ETH-USD), including any with an active trading halt. Catalog-only coins that Robinhood does not offer are excluded. Use this to discover symbols and per-pair order constraints before calling get_crypto_quotes or referencing positions.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor. Omit for the first page; for the next page, pass the prior response's next value back verbatim."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maximum number of pairs to return on this page (clamped to [1, 700]). Defaults to 25 to keep the response sized for an agent's context window; raise it when the user wants the full catalog and is OK with a larger response."
+          }
+        },
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "object",
+            "properties": {
+              "results": {
+                "type": [
+                  "null",
+                  "array"
+                ],
+                "items": {
+                  "type": [
+                    "null",
+                    "object"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "Currency-pair UUID. Pass to get_crypto_quotes via the symbol field, or match against the currency_pair_id on get_crypto_positions rows."
+                    },
+                    "symbol": {
+                      "type": "string",
+                      "description": "Canonical hyphenated symbol (e.g. 'BTC-USD'). Note: get_crypto_quotes returns the unhyphenated form (e.g. 'BTCUSD') in its symbol field; strip the hyphen here to cross-reference."
+                    },
+                    "display_symbol": {
+                      "type": "string",
+                      "description": "Display-only override for the symbol (rarely set). When empty, treat symbol as the display value."
+                    },
+                    "name": {
+                      "type": "string",
+                      "description": "Full pair name (e.g. 'Bitcoin')."
+                    },
+                    "asset_currency": {
+                      "type": [
+                        "null",
+                        "object"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "description": "Currency UUID."
+                        },
+                        "code": {
+                          "type": "string",
+                          "description": "Ticker (e.g. 'BTC', 'USD')."
+                        },
+                        "name": {
+                          "type": "string",
+                          "description": "Full currency name (e.g. 'Bitcoin', 'U.S. Dollar')."
+                        },
+                        "type": {
+                          "type": "string",
+                          "description": "'cryptocurrency' or 'fiat'."
+                        }
+                      },
+                      "description": "The asset side of the pair (e.g. BTC in BTC-USD).",
+                      "required": [
+                        "id",
+                        "code",
+                        "name",
+                        "type"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "quote_currency": {
+                      "type": [
+                        "null",
+                        "object"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "description": "Currency UUID."
+                        },
+                        "code": {
+                          "type": "string",
+                          "description": "Ticker (e.g. 'BTC', 'USD')."
+                        },
+                        "name": {
+                          "type": "string",
+                          "description": "Full currency name (e.g. 'Bitcoin', 'U.S. Dollar')."
+                        },
+                        "type": {
+                          "type": "string",
+                          "description": "'cryptocurrency' or 'fiat'."
+                        }
+                      },
+                      "description": "The quote side of the pair (typically USD).",
+                      "required": [
+                        "id",
+                        "code",
+                        "name",
+                        "type"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "tradability": {
+                      "type": "string",
+                      "description": "Pair-level eligibility: 'tradable' (both sides open), 'buy_only', 'sell_only', 'untradable', or 'limited'. Resolved for the authenticated user across all their account types; per-account-type detail is in tradability_by_account_type."
+                    },
+                    "tradability_by_account_type": {
+                      "type": "object",
+                      "description": "Per-account-type tradability override (key e.g. 'individual', 'ira_roth', value as in tradability). Empty when only the headline applies.",
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    },
+                    "display_only": {
+                      "type": "boolean",
+                      "description": "True when the pair is shown for discovery but cannot be ordered."
+                    },
+                    "min_order_size": {
+                      "type": "string",
+                      "description": "Minimum order quantity in asset units (e.g. 0.00000001 BTC)."
+                    },
+                    "max_order_size": {
+                      "type": "string",
+                      "description": "Maximum order quantity in asset units."
+                    },
+                    "min_order_quantity_increment": {
+                      "type": "string",
+                      "description": "Quantity step size \u2014 order quantities must be a multiple of this value."
+                    },
+                    "min_order_price_increment": {
+                      "type": "string",
+                      "description": "Limit-price step size \u2014 prices must be a multiple of this value."
+                    },
+                    "min_order_quote_amount": {
+                      "type": [
+                        "null",
+                        "string"
+                      ],
+                      "description": "Minimum order notional in the quote currency (USD). Null for unauthenticated callers or pairs without a notional floor."
+                    },
+                    "market_orders_only": {
+                      "type": "boolean",
+                      "description": "True when only market orders are accepted on this pair (no limit / stop variants)."
+                    },
+                    "type": {
+                      "type": "string",
+                      "description": "Currency-pair type (typically 'cryptocurrency')."
+                    },
+                    "halted": {
+                      "type": "boolean",
+                      "description": "True when this pair has an active halt in one or more regions right now. Convenience flag for halted_regions being non-empty. Derived from the /halts/summary/ endpoint at call time; distinct from tradability, which reflects standing eligibility rather than a live halt event."
+                    },
+                    "halted_regions": {
+                      "type": [
+                        "null",
+                        "array"
+                      ],
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "Region codes where this pair currently has an active halt (e.g. ['NY','TX']). The sentinel 'ALL' denotes a global halt that applies to every region. Omitted when the pair is not halted. A region-scoped entry may be one-sided (e.g. sell-only) \u2014 do not assume the pair is fully suspended."
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "symbol",
+                    "name",
+                    "asset_currency",
+                    "quote_currency",
+                    "tradability",
+                    "display_only",
+                    "min_order_size",
+                    "max_order_size",
+                    "min_order_quantity_increment",
+                    "min_order_price_increment",
+                    "market_orders_only",
+                    "halted"
+                  ],
+                  "additionalProperties": false
+                },
+                "description": "Robinhood-supported currency pairs on this page, including pairs with an active halt (halted=true). Catalog-only coins not offered by Robinhood are excluded. Empty when the cursor has no rows."
+              },
+              "next": {
+                "type": "string",
+                "description": "Opaque cursor for the next page \u2014 NOT a URL. When non-empty more pages exist: call this tool again with cursor set to this value verbatim, leaving the other arguments unchanged. Empty on the last page."
+              }
+            },
+            "description": "Tool-specific result payload; see the inner properties for fields.",
+            "required": [
+              "results"
+            ],
+            "additionalProperties": false
+          },
+          "guide": {
+            "type": "string",
+            "description": "Render pairs as a markdown table with columns: Symbol | Name | Pair ID | Min Order | Max Order | Min Increment | Min Price Increment | Min Notional | Mkt Only | Restrictions | Halted. Formatting: Symbol \u2192 symbol; Name \u2192 asset_currency.name (e.g. 'Aave', not the full pair name); Pair ID \u2192 id truncated to the segment before the first '-'; Min Order \u2192 min_order_size; Max Order \u2192 max_order_size with comma separators; Min Increment \u2192 min_order_quantity_increment; Min Price Increment \u2192 '$' + min_order_price_increment; Min Notional \u2192 '$' + min_order_quote_amount, or '\u2014' when null; Mkt Only \u2192 'Yes'/'No' from market_orders_only; Restrictions \u2192 halted_regions joined by ', ' ('ALL' = a global halt), or 'None' when empty; Halted \u2192 'True' when halted else '\u2014'. When Halted is True the pair has a live halt in the listed regions \u2014 it may be one-sided (e.g. sell-only) and should not be assumed freely orderable. Only Robinhood-supported pairs are listed; catalog-only coins Robinhood does not offer are already excluded."
+          }
+        },
+        "required": [
+          "data",
+          "guide"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "place_crypto_order",
+      "description": "Place a real crypto order with real money. Parameters mirror preview_crypto_order plus the optional ref_id. Requires an agentic-enabled crypto account.\n\nWorkflow: by default call preview_crypto_order first. When it comes back with customer_approval_required true, call this tool straight away with no confirmation step in the conversation, because this call does not place the order: it goes to the customer to approve or decline in the Robinhood app. Otherwise follow preview_crypto_order's own guide.\n\nIdempotency: pass a fresh UUID as ref_id on the first call for each logical order, and re-send the SAME ref_id on retries of transient failures. Use a new ref_id only when the user wants a new order.\n\nParameter rules:\n- Provide exactly one of quantity or dollar_amount; dollar_amount works with every type.\n- limit_price is required for limit and stop_limit; stop_price is required for stop_loss and stop_limit.\n- symbol is resolved to a currency pair before placement; pass a bare asset symbol (e.g. 'BTC') or a pair ('BTC-USD').",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "rhs_account_number": {
+            "type": "string",
+            "description": "Numeric brokerage account number (the 'rhs_account_number' field on get_accounts entries \u2014 distinct from the alphanumeric 'account_number'). Must be an agentic-enabled crypto account. Required. Do NOT pass rhc_account_number (the linked crypto account, labeled 'Crypto Account' on get_accounts) \u2014 that is a different identifier space and will return no crypto account found."
+          },
+          "symbol": {
+            "type": "string",
+            "description": "Crypto symbol (e.g. 'BTC', 'ETH', or 'BTC-USD'). Resolved to a currency pair before the order is placed. Required."
+          },
+          "side": {
+            "type": "string",
+            "description": "'buy' or 'sell'. Required."
+          },
+          "type": {
+            "type": "string",
+            "description": "'market', 'limit', 'stop_loss', or 'stop_limit'. Required. 'stop_loss' is a stop-triggered market order \u2014 despite the name it applies to buy stops too; the equity/option tools call the same concept 'stop_market'. ALWAYS call these by their app names when speaking to the user, including when listing what types are supported: 'stop_loss' is a 'stop order' and 'stop_limit' a 'stop limit order'; the raw values are tool inputs only. A user asking for a 'stop loss', 'stop order', or 'stop market' order means this stop_loss type \u2014 do not ask which stop type (but a limit price given alongside the trigger makes it stop_limit); ask only when the phrasing names no type, e.g. a bare 'stop' or 'protect my position'."
+          },
+          "quantity": {
+            "type": "string",
+            "description": "Asset quantity to trade (e.g. amount of BTC). Provide exactly one of quantity or dollar_amount. Crypto is measured in coins/units, not shares \u2014 when speaking to the user, including order confirmations, NEVER call a crypto quantity 'shares' ('shares' is equity terminology); state the amount of the asset, e.g. '0.001542 ETH'."
+          },
+          "dollar_amount": {
+            "type": "string",
+            "description": "USD notional (e.g. '100.00'). Valid with every order type. Provide exactly one of quantity or dollar_amount. For market, quantity is derived server-side: a buy is sized at the current market price \u2014 the same sizing as the app \u2014 so the typical debit is ~dollar_amount, with a worst case up to ~1% more if the price moves before execution (the buy collar); a sell is likewise sized at the current market price, so the typical credit is ~dollar_amount, with a worst case up to ~5% less if the price moves before execution (the sell collar). For stop_loss, quantity is derived from dollar_amount at stop_price (the trigger price) when the order is placed, not the live quote \u2014 the triggered market order executes near the trigger, so the typical fill notional is ~dollar_amount, with a worst case up to the collar worse (a higher debit for buy stops, a lower credit for sell stops). For limit and stop_limit, quantity is derived from dollar_amount at limit_price when the order is placed \u2014 fills execute at the limit price or better, so a buy's debit is capped at dollar_amount (no collar buffer; on fee-priced accounts fee rounding can add at most one cent) and a sell's credit is at least the derived quantity's worth at the limit, minus any fee. On fee-priced accounts a buy's quantity is sized from the fee-netted amount so the total debit targets dollar_amount, and a sell's fee is deducted from the credit."
+          },
+          "limit_price": {
+            "type": "string",
+            "description": "Limit price; required for limit and stop_limit."
+          },
+          "stop_price": {
+            "type": "string",
+            "description": "Stop trigger price; required for stop_loss and stop_limit."
+          },
+          "time_in_force": {
+            "type": "string",
+            "description": "Allowed values depend on type. market and limit: 'gtc' (good till canceled) only \u2014 market orders execute immediately so a bounded duration does not apply, and limit orders are always for 90 days; omit this field or pass 'gtc' for both. stop_loss and stop_limit: 'gtc' (good for 90 days), 'gfd' (good for day), 'gfw' (good for 7 days), or 'gfm' (good for 30 days). If omitted, defaults to gtc for market and limit, and gfd for stop_loss and stop_limit. 'ioc' is NEVER supported for crypto orders."
+          },
+          "tax_lots": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "object",
+              "properties": {
+                "open_lot_id": {
+                  "type": "string",
+                  "description": "open_lot_id of the open tax lot to sell, from get_crypto_tax_lots."
+                },
+                "quantity": {
+                  "type": "string",
+                  "description": "Units to sell from this lot as a decimal string; at most the lot's quantity_available (or exactly quantity_to_sell from a strategy result)."
+                }
+              },
+              "required": [
+                "open_lot_id",
+                "quantity"
+              ],
+              "additionalProperties": false
+            },
+            "description": "Optional specified-lot selection for a SELL order. To sell specific tax lots instead of the default disposal, pass {open_lot_id, quantity} objects whose quantities sum to the order quantity, with open_lot_id taken from the account's crypto tax lots (see the request guide). Omit for the default. Sell only; quantity-based orders only (not dollar_amount); at most 50 lots; only when the lot listing reports selection_state 'enabled'. Not every account can select lots: if the tool rejects tax_lots as not available, tell the user and offer the default disposal instead."
+          },
+          "ref_id": {
+            "type": "string",
+            "description": "Idempotency key (UUID). Generate once per logical order and re-send the SAME value on retries of transient failures \u2014 the upstream deduplicates by ref_id. Omitting falls back to a server-generated key (loses client\u2194gateway idempotency). Use a new value only when the user wants a new order."
+          }
+        },
+        "required": [
+          "rhs_account_number",
+          "symbol",
+          "side",
+          "type"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "object",
+            "properties": {
+              "order": {
+                "type": [
+                  "null",
+                  "object"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "description": "Order UUID. Needed by cancel_crypto_order (M2.2)."
+                  },
+                  "ref_id": {
+                    "type": "string",
+                    "description": "Idempotency key the order is stored under, unique per account. Usually the ref_id passed to place_crypto_order; an order placed through a trade approval carries that approval's id instead. Omitted when the order has none."
+                  },
+                  "account_id": {
+                    "type": "string",
+                    "description": "Crypto account UUID this order belongs to. Matches the account_id on get_crypto_positions rows."
+                  },
+                  "currency_pair_id": {
+                    "type": "string",
+                    "description": "Pair UUID (e.g. BTC-USD). Pass to get_crypto_quotes for current price, or match against get_currency_pairs.id."
+                  },
+                  "currency_code": {
+                    "type": "string",
+                    "description": "Asset currency code (e.g. 'BTC', 'ETH'). Useful for grouping orders by coin without joining against get_currency_pairs."
+                  },
+                  "side": {
+                    "type": "string",
+                    "description": "'buy' or 'sell'."
+                  },
+                  "type": {
+                    "type": "string",
+                    "description": "'market', 'limit', 'stop_loss', or 'stop_limit'. 'stop_loss' is a stop-triggered market order \u2014 despite the name it applies to buy stops too; the equity/option tools call the same concept 'stop_market'. ALWAYS call these by their app names when speaking to the user, including when listing what types are supported: 'stop_loss' is a 'stop order' and 'stop_limit' a 'stop limit order'; the raw values are tool inputs only."
+                  },
+                  "state": {
+                    "type": "string",
+                    "description": "Raw lifecycle state: new, queued, unconfirmed, confirmed, partially_filled, filled, canceled, rejected, failed, voided. Combine with derived_state for clearer end-state classification."
+                  },
+                  "derived_state": {
+                    "type": "string",
+                    "description": "Normalized lifecycle classification, e.g. 'open' / 'closed' / similar shorthand the upstream computes from raw state + fills. Prefer over state for user-facing summaries."
+                  },
+                  "state_group": {
+                    "type": "string",
+                    "description": "'open' or 'closed' \u2014 the headline answer to 'is this order still working?'."
+                  },
+                  "time_in_force": {
+                    "type": "string",
+                    "description": "'gtc' (good till canceled), 'gfd' (good for day), 'ioc' (immediate or cancel), 'gfw' (good for week), 'gfm' (good for month)."
+                  },
+                  "quantity": {
+                    "type": [
+                      "null",
+                      "string"
+                    ],
+                    "description": "Originally-requested asset quantity. On dollar-based orders the server derives it at placement: from the quote for market and from the stop price for stop_loss (treat those as estimated until fills confirm them), and from the limit price for limit/stop_limit (exact at placement)."
+                  },
+                  "cumulative_quantity": {
+                    "type": "string",
+                    "description": "Total asset quantity filled so far. Less than quantity while partially filled; equal once filled."
+                  },
+                  "canceled_quantity": {
+                    "type": [
+                      "null",
+                      "string"
+                    ],
+                    "description": "Quantity that was canceled before fill (only populated on partial-fill-then-cancel paths)."
+                  },
+                  "price": {
+                    "type": [
+                      "null",
+                      "string"
+                    ],
+                    "description": "Order price (interpretation depends on type \u2014 limit price for limit; for stop_loss it is the collared worst-case execution bound, NOT the trigger, which lives in stop_price; for market it is the raw quote side-price on a preview_crypto_order response \u2014 the same price the app displays, NOT collared \u2014 but the collared worst-case execution bound on placed orders; stablecoin pairs are never collared, so their preview and placed prices both carry the raw quote). Use limit_price / stop_price for the unambiguous fields."
+                  },
+                  "limit_price": {
+                    "type": [
+                      "null",
+                      "string"
+                    ],
+                    "description": "Limit price for limit / stop_limit orders. Null for market / stop_loss."
+                  },
+                  "stop_price": {
+                    "type": [
+                      "null",
+                      "string"
+                    ],
+                    "description": "Stop trigger price for stop_loss / stop_limit orders. Null for market / limit."
+                  },
+                  "average_price": {
+                    "type": [
+                      "null",
+                      "string"
+                    ],
+                    "description": "Volume-weighted average fill price across executions. Null until the first fill."
+                  },
+                  "entered_price": {
+                    "type": [
+                      "null",
+                      "string"
+                    ],
+                    "description": "Price the user originally entered (pre-collaring). Different from limit_price after server-side collaring adjusts the order."
+                  },
+                  "rounded_executed_notional": {
+                    "type": [
+                      "null",
+                      "string"
+                    ],
+                    "description": "Total notional filled so far in the quote currency, rounded to 2 decimals."
+                  },
+                  "executions": {
+                    "type": [
+                      "null",
+                      "array"
+                    ],
+                    "items": {
+                      "type": [
+                        "null",
+                        "object"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "description": "Execution UUID."
+                        },
+                        "price": {
+                          "type": "string",
+                          "description": "Reported fill price per unit asset (e.g. USD per BTC). For the price the user actually paid after venue adjustments, use effective_price."
+                        },
+                        "effective_price": {
+                          "type": "string",
+                          "description": "Per-unit price after venue fees or price adjustments are applied \u2014 closer to the user's realized fill economics than price."
+                        },
+                        "quantity": {
+                          "type": "string",
+                          "description": "Asset quantity filled in this execution."
+                        },
+                        "notional": {
+                          "type": "string",
+                          "description": "effective_price * quantity, rounded to 2 decimals where applicable."
+                        },
+                        "exchange_name": {
+                          "type": "string",
+                          "description": "Routing venue name. Treat as informational; do not surface unless the user asks about routing."
+                        },
+                        "timestamp": {
+                          "type": "string",
+                          "description": "When the fill occurred (UTC)."
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "price",
+                        "effective_price",
+                        "quantity",
+                        "notional",
+                        "timestamp"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "description": "Per-fill detail. Reference for per-execution timing or price questions; for headline 'what did this fill at?' use average_price."
+                  },
+                  "initiator_type": {
+                    "type": "string",
+                    "description": "Source that placed the order: 'api_trading', 'trading_view', 'recurring', 'paycheck', 'rh_assistant', 'agentic_trading' (when nummus adds that enum value), or one of the internal crypto-specific values. Tells the user whether they placed this order via app, API, recurring buy, or an agent."
+                  },
+                  "speculative": {
+                    "type": "boolean",
+                    "description": "True when the order was created as a speculative pre-trade check (no upstream side effect). Should always be false on real placed orders; populated read-only by upstream."
+                  },
+                  "created_at": {
+                    "type": "string",
+                    "description": "When the order was created (UTC)."
+                  },
+                  "updated_at": {
+                    "type": "string",
+                    "description": "Last server-side state update (UTC) \u2014 fill, cancel, reject, etc."
+                  },
+                  "canceled_at": {
+                    "type": [
+                      "null",
+                      "string"
+                    ],
+                    "description": "When the cancel was acknowledged. Null when the order has not been canceled."
+                  },
+                  "routing": {
+                    "type": "string",
+                    "description": "How the order is routed for execution. Present verbatim as the routing line item; absent when routing information is unavailable."
+                  },
+                  "rounded_estimated_notional_with_estimated_fee": {
+                    "type": [
+                      "null",
+                      "string"
+                    ],
+                    "description": "Estimated total cost (buy) or net proceeds (sell) in the quote currency, with ONLY the estimated fee already included. It does NOT include any additional taxes or deductions."
+                  },
+                  "rounded_uncollared_estimated_notional_with_estimated_fee": {
+                    "type": [
+                      "null",
+                      "string"
+                    ],
+                    "description": "Same as rounded_estimated_notional_with_estimated_fee but before price collaring. Null when collaring does not apply."
+                  },
+                  "rounded_executed_notional_with_fee": {
+                    "type": [
+                      "null",
+                      "string"
+                    ],
+                    "description": "Notional actually executed so far only including fees without netting additional taxes, in the quote currency. Grows as fills come in; 0 before the first fill. For the executed figure net of all taxes and fees use net_rounded_executed_notional."
+                  },
+                  "total_executed_notional": {
+                    "type": [
+                      "null",
+                      "string"
+                    ],
+                    "description": "Total executed notional so far only including fees without netting additional taxes. Null until there are fills."
+                  },
+                  "net_rounded_estimated_notional": {
+                    "type": [
+                      "null",
+                      "string"
+                    ],
+                    "description": "Estimated total cost (buy) or credit (sell) net of ALL taxes and fees. On a preview, present this as the estimated total cost or credit line item alongside the separate estimated_fee value. Never subtract the fee or taxes from it again. Null when an order has fills."
+                  },
+                  "net_rounded_executed_notional": {
+                    "type": [
+                      "null",
+                      "string"
+                    ],
+                    "description": "Executed total cost (buy) or credit (sell) net of ALL taxes and fees \u2014 the definitive amount actually debited or credited. Null before the first fill. Grows as fills come in. Never subtract the fee or any taxes from it again."
+                  },
+                  "fees": {
+                    "type": [
+                      "null",
+                      "array"
+                    ],
+                    "items": {
+                      "type": [
+                        "null",
+                        "object"
+                      ],
+                      "properties": {
+                        "fee_structure": {
+                          "type": "string",
+                          "description": "How the fee was computed (e.g. a fixed percentage or a volume-tiered rate)."
+                        },
+                        "fee_data": {
+                          "type": [
+                            "null",
+                            "object"
+                          ],
+                          "properties": {
+                            "fee_type": {
+                              "type": "string",
+                              "description": "Fee category (e.g. a transaction/spread fee)."
+                            },
+                            "fee_amount": {
+                              "type": [
+                                "null",
+                                "string"
+                              ],
+                              "description": "Fee amount in the quote currency (USD)."
+                            },
+                            "fee_ratio": {
+                              "type": [
+                                "null",
+                                "string"
+                              ],
+                              "description": "Rate this fee was computed at, when applicable."
+                            }
+                          },
+                          "description": "This fee's amount, type, and rate.",
+                          "additionalProperties": false
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "description": "Itemized fee breakdown for exchange-routed orders. Empty or absent when the order carries no itemized fees."
+                  },
+                  "tax_withholding": {
+                    "type": [
+                      "null",
+                      "object"
+                    ],
+                    "properties": {
+                      "withholding_rate": {
+                        "type": "string",
+                        "description": "Withholding rate preformatted as a percent (e.g. '24%'), aggregated across the federal and any state portion. Print verbatim. Absent when no rate is available."
+                      },
+                      "estimated_withholding_amount": {
+                        "type": [
+                          "null",
+                          "string"
+                        ],
+                        "description": "Estimated USD to be withheld from this sell's proceeds. Present only while cumulative_quantity is 0. Exactly one of this and total_withholding_amount is ever present, so read the one that is there."
+                      },
+                      "total_withholding_amount": {
+                        "type": [
+                          "null",
+                          "string"
+                        ],
+                        "description": "Actual USD withheld from proceeds across fills so far (final once fully filled). Present only once cumulative_quantity is positive. Exactly one of this and estimated_withholding_amount is ever present, so read the one that is there."
+                      }
+                    },
+                    "description": "Backup withholding on this sell order's proceeds. Present only when withholding applies (sell orders for subject users; never on IRA accounts) \u2014 when absent, do not mention withholding. amount and withholding_rate are the display-ready figure and percent.",
+                    "additionalProperties": false
+                  }
+                },
+                "description": "The newly-created crypto order \u2014 same shape as get_crypto_orders results. Submitted, not necessarily filled; read state for status and id for follow-up cancellation. Omitted when approval is present.",
+                "required": [
+                  "id",
+                  "account_id",
+                  "currency_pair_id",
+                  "side",
+                  "type",
+                  "state",
+                  "time_in_force",
+                  "quantity",
+                  "cumulative_quantity",
+                  "created_at",
+                  "updated_at"
+                ],
+                "additionalProperties": false
+              },
+              "fee_rate": {
+                "type": "string",
+                "description": "Rate this order's fee was computed at, preformatted: the bare percent on single-rate fee pricing (e.g. '0.35%'), suffixed with the liquidity role on maker/taker-priced accounts (e.g. '0.05% maker', '0.1% taker'; '0.05% reduced', '0.1% standard' on accounts using reduced/standard fee names \u2014 reduced is the maker rate and standard is the taker rate, so use reduced/standard with those accounts). Absent when no fee rate applies to this order."
+              },
+              "estimated_fee": {
+                "type": [
+                  "null",
+                  "string"
+                ],
+                "description": "Estimated fee for this order in USD \u2014 an estimate until the order fills. 0 when no fee applies to this order. Omitted when approval is present."
+              },
+              "fee_context": {
+                "type": "string",
+                "description": "Why no fee rate applies to this order even though the account trades with fee pricing, preformatted for display (e.g. 'asset not eligible for fee tiers'). Only ever present when fee_rate is absent; absent when no explanation applies."
+              },
+              "crypto_account_number": {
+                "type": "string",
+                "description": "Crypto account number the order was placed against. Present THIS as the account to the user \u2014 not the brokerage account number used to look the account up. When absent, refer to the account as the user's linked crypto account."
+              },
+              "lot_basis": {
+                "type": [
+                  "null",
+                  "object"
+                ],
+                "properties": {
+                  "estimated_cost_basis": {
+                    "type": "string",
+                    "description": "Estimated total cost of the units sold from the selected lots whose cost is known, from each lot's rounded per-unit cost. An estimate, informational, not tax advice."
+                  },
+                  "estimated_gain": {
+                    "type": "string",
+                    "description": "Estimated gain on the lots with a known cost (negative is a loss): their pro-rata share of the estimated proceeds net of the fee, before any backup withholding, minus estimated_cost_basis. An estimate, not tax advice."
+                  },
+                  "estimated_gain_percent": {
+                    "type": [
+                      "null",
+                      "string"
+                    ],
+                    "description": "estimated_gain as a percent of estimated_cost_basis, rounded to one decimal place (negative is a loss). Absent when estimated_cost_basis is zero."
+                  },
+                  "short_term_gain": {
+                    "type": [
+                      "null",
+                      "string"
+                    ],
+                    "description": "The part of estimated_gain from lots held short-term (term_type 'st'). Present when at least one selected lot with a known cost is short-term."
+                  },
+                  "long_term_gain": {
+                    "type": [
+                      "null",
+                      "string"
+                    ],
+                    "description": "The part of estimated_gain from lots held long-term (term_type 'lt'). Present when at least one selected lot with a known cost is long-term."
+                  },
+                  "other_term_gain": {
+                    "type": [
+                      "null",
+                      "string"
+                    ],
+                    "description": "Gain on lots whose holding term is not known or not a plain short/long term; tell the user this portion could not be classified."
+                  },
+                  "incomplete": {
+                    "type": "boolean",
+                    "description": "True when at least one selected lot has no known cost, so estimated_cost_basis and estimated_gain cover only the lots whose cost is known."
+                  },
+                  "uncovered_quantity": {
+                    "type": [
+                      "null",
+                      "string"
+                    ],
+                    "description": "Units of this sale with no known cost basis; estimated_cost_basis and estimated_gain exclude them. Tell the user the estimate covers only part of the sale."
+                  }
+                },
+                "description": "Estimated cost basis and gain for a specified-lot sell, from the selected lots' rounded per-unit costs and the order's estimated proceeds net of the fee. Present only when tax_lots was supplied, the order was placed, and at least one selected lot has a known cost. All figures are estimates, informational, not tax advice.",
+                "required": [
+                  "estimated_cost_basis",
+                  "estimated_gain"
+                ],
+                "additionalProperties": false
+              },
+              "selected_lots": {
+                "type": [
+                  "null",
+                  "array"
+                ],
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "open_lot_id": {
+                      "type": "string",
+                      "description": "The open tax lot, in the canonical form get_crypto_tax_lots lists it."
+                    },
+                    "quantity_available": {
+                      "type": [
+                        "null",
+                        "string"
+                      ],
+                      "description": "Units of this lot still selectable when it was looked up, net of units reserved by other open sell orders. Absent when the lot could not be looked up."
+                    },
+                    "quantity_to_sell": {
+                      "type": "string",
+                      "description": "Units this order sells from the lot, as requested."
+                    },
+                    "cost_per_unit": {
+                      "type": [
+                        "null",
+                        "string"
+                      ],
+                      "description": "The lot's per-unit cost in USD as reported for the lot, already rounded there \u2014 an estimate, not the exact basis. Absent when the lot's cost is not known."
+                    },
+                    "cost_basis": {
+                      "type": [
+                        "null",
+                        "string"
+                      ],
+                      "description": "Estimated cost of the units this order sells from the lot: cost_per_unit times quantity_to_sell, rounded to two decimals. Absent when the lot's cost is not known."
+                    },
+                    "term_type": {
+                      "type": "string",
+                      "description": "'lt' long-term, 'st' short-term, 'unknown' when the holding term is not known; other values are special cases. Absent when the lot could not be looked up."
+                    }
+                  },
+                  "required": [
+                    "open_lot_id",
+                    "quantity_to_sell"
+                  ],
+                  "additionalProperties": false
+                },
+                "description": "The lots this order sells from, in the order requested. Present only when tax_lots was supplied and the order was placed; absent on an approval-only response. Render them as a Lots section of the confirmation: one row per lot with open_lot_id, quantity_to_sell, and cost_basis (write 'unknown' when cost_basis is absent)."
+              },
+              "approval": {
+                "type": [
+                  "null",
+                  "object"
+                ],
+                "properties": {
+                  "approval_id": {
+                    "type": "string",
+                    "description": "Unique id of this approval. Pass it to decline_trade_approval to decline this pending approval."
+                  },
+                  "account_number": {
+                    "type": "string",
+                    "description": "The account this approval belongs to."
+                  },
+                  "asset_class": {
+                    "type": "string",
+                    "description": "Asset class of the proposed order: ASSET_CLASS_EQUITY, ASSET_CLASS_OPTION, or ASSET_CLASS_CRYPTO."
+                  },
+                  "state": {
+                    "type": "string",
+                    "description": "Lifecycle state: APPROVAL_STATE_PENDING (awaiting the customer), APPROVAL_STATE_APPROVED, APPROVAL_STATE_DECLINED, APPROVAL_STATE_EXPIRED, or APPROVAL_STATE_AUTO_APPROVED (the account did not require approval for this order, so it was submitted straight to the market and never waited on the customer). Only APPROVAL_STATE_PENDING can be declined. Listings return pending approvals."
+                  },
+                  "is_edited": {
+                    "type": "boolean",
+                    "description": "True when the actual order parameters differ from what was proposed (the customer edited before approving)."
+                  },
+                  "rationale": {
+                    "type": "string",
+                    "description": "Optional free-text reason recorded when the order was proposed."
+                  },
+                  "proposed_order": {
+                    "type": [
+                      "null",
+                      "object"
+                    ],
+                    "properties": {
+                      "asset_class": {
+                        "type": "string",
+                        "description": "Asset class of this order: ASSET_CLASS_EQUITY, ASSET_CLASS_OPTION, or ASSET_CLASS_CRYPTO."
+                      },
+                      "side": {
+                        "type": "string",
+                        "description": "Order side, e.g. 'buy', 'sell', or 'sell_short'. Omitted for contingent orders."
+                      },
+                      "order_type": {
+                        "type": "string",
+                        "description": "Order type, e.g. 'market', 'limit', 'stop_loss', or 'stop_limit'. Omitted for contingent orders."
+                      },
+                      "time_in_force": {
+                        "type": "string",
+                        "description": "How long the order stays active, e.g. 'gfd' (good for day) or 'gtc' (good till canceled). Omitted for contingent orders."
+                      },
+                      "market_hours": {
+                        "type": "string",
+                        "description": "Which trading session the order is valid for, e.g. 'regular_hours', 'extended_hours', or 'all_day_hours'. Omitted when the upstream did not specify a session."
+                      },
+                      "trigger": {
+                        "type": "string",
+                        "description": "What activates the order, e.g. 'immediate' or 'stop'. Omitted for contingent orders."
+                      },
+                      "contingency_type": {
+                        "type": "string",
+                        "description": "Advanced-order contingency, e.g. 'oco'. Omitted for standalone orders."
+                      },
+                      "sub_orders": {
+                        "type": [
+                          "null",
+                          "array"
+                        ],
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "asset_class": {
+                              "type": "string",
+                              "description": "Asset class of this sub-order."
+                            },
+                            "side": {
+                              "type": "string",
+                              "description": "Sub-order side, e.g. 'buy' or 'sell'."
+                            },
+                            "quantity": {
+                              "type": "string",
+                              "description": "Share quantity as a decimal string."
+                            },
+                            "order_type": {
+                              "type": "string",
+                              "description": "Sub-order type, e.g. 'market' or 'limit'."
+                            },
+                            "trigger": {
+                              "type": "string",
+                              "description": "What activates the sub-order: 'immediate' or 'stop'."
+                            },
+                            "limit_price": {
+                              "type": [
+                                "null",
+                                "object"
+                              ],
+                              "properties": {
+                                "amount": {
+                                  "type": "string",
+                                  "description": "Decimal monetary amount as a string, e.g. '150.25'. Not a number, to avoid float rounding."
+                                },
+                                "currency_code": {
+                                  "type": "string",
+                                  "description": "Currency of the amount, e.g. 'USD'. Omitted when the upstream did not specify one."
+                                }
+                              },
+                              "description": "Limit price when the sub-order is limit-priced.",
+                              "required": [
+                                "amount"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "stop_price": {
+                              "type": [
+                                "null",
+                                "object"
+                              ],
+                              "properties": {
+                                "amount": {
+                                  "type": "string",
+                                  "description": "Decimal monetary amount as a string, e.g. '150.25'. Not a number, to avoid float rounding."
+                                },
+                                "currency_code": {
+                                  "type": "string",
+                                  "description": "Currency of the amount, e.g. 'USD'. Omitted when the upstream did not specify one."
+                                }
+                              },
+                              "description": "Stop trigger price when the sub-order is stop-triggered.",
+                              "required": [
+                                "amount"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "time_in_force": {
+                              "type": "string",
+                              "description": "How long the sub-order stays active."
+                            },
+                            "is_primary": {
+                              "type": "boolean",
+                              "description": "Whether this sub-order triggers the remaining contingent orders."
+                            }
+                          },
+                          "required": [
+                            "asset_class",
+                            "side",
+                            "quantity",
+                            "order_type",
+                            "trigger",
+                            "time_in_force",
+                            "is_primary"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "description": "The complete sub-order set for a contingent order."
+                      },
+                      "quantity": {
+                        "type": "string",
+                        "description": "Share, contract, or coin count as a decimal string. Present for quantity-based orders; mutually exclusive with dollar_amount."
+                      },
+                      "dollar_amount": {
+                        "type": [
+                          "null",
+                          "object"
+                        ],
+                        "properties": {
+                          "amount": {
+                            "type": "string",
+                            "description": "Decimal monetary amount as a string, e.g. '150.25'. Not a number, to avoid float rounding."
+                          },
+                          "currency_code": {
+                            "type": "string",
+                            "description": "Currency of the amount, e.g. 'USD'. Omitted when the upstream did not specify one."
+                          }
+                        },
+                        "description": "Notional dollar amount for a dollar-based order. Present for dollar-based orders; mutually exclusive with quantity.",
+                        "required": [
+                          "amount"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "limit_price": {
+                        "type": [
+                          "null",
+                          "object"
+                        ],
+                        "properties": {
+                          "amount": {
+                            "type": "string",
+                            "description": "Decimal monetary amount as a string, e.g. '150.25'. Not a number, to avoid float rounding."
+                          },
+                          "currency_code": {
+                            "type": "string",
+                            "description": "Currency of the amount, e.g. 'USD'. Omitted when the upstream did not specify one."
+                          }
+                        },
+                        "description": "Limit price; present only for limit and stop-limit orders.",
+                        "required": [
+                          "amount"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "stop_price": {
+                        "type": [
+                          "null",
+                          "object"
+                        ],
+                        "properties": {
+                          "amount": {
+                            "type": "string",
+                            "description": "Decimal monetary amount as a string, e.g. '150.25'. Not a number, to avoid float rounding."
+                          },
+                          "currency_code": {
+                            "type": "string",
+                            "description": "Currency of the amount, e.g. 'USD'. Omitted when the upstream did not specify one."
+                          }
+                        },
+                        "description": "Stop (trigger) price; present only for stop-limit and stop-market orders.",
+                        "required": [
+                          "amount"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "peg_type": {
+                        "type": "string",
+                        "description": "Trailing-stop peg basis when this is a trailing stop: 'price' or 'percentage'. Omitted for non-trailing orders."
+                      },
+                      "price_peg": {
+                        "type": [
+                          "null",
+                          "object"
+                        ],
+                        "properties": {
+                          "amount": {
+                            "type": "string",
+                            "description": "Decimal monetary amount as a string, e.g. '150.25'. Not a number, to avoid float rounding."
+                          },
+                          "currency_code": {
+                            "type": "string",
+                            "description": "Currency of the amount, e.g. 'USD'. Omitted when the upstream did not specify one."
+                          }
+                        },
+                        "description": "Trailing offset as a dollar amount; present when peg_type is 'price'.",
+                        "required": [
+                          "amount"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "percentage_peg": {
+                        "type": "string",
+                        "description": "Trailing offset as a percentage (decimal string); present when peg_type is 'percentage'."
+                      },
+                      "symbol": {
+                        "type": "string",
+                        "description": "Ticker symbol of the tradable, e.g. 'AAPL' for an equity or option underlying, or 'BTC-USD' for crypto."
+                      },
+                      "strike_price": {
+                        "type": [
+                          "null",
+                          "object"
+                        ],
+                        "properties": {
+                          "amount": {
+                            "type": "string",
+                            "description": "Decimal monetary amount as a string, e.g. '150.25'. Not a number, to avoid float rounding."
+                          },
+                          "currency_code": {
+                            "type": "string",
+                            "description": "Currency of the amount, e.g. 'USD'. Omitted when the upstream did not specify one."
+                          }
+                        },
+                        "description": "Option strike price; present only for option orders.",
+                        "required": [
+                          "amount"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "expiration_date": {
+                        "type": "string",
+                        "description": "Option expiration date as 'YYYY-MM-DD'; present only for option orders."
+                      },
+                      "option_type": {
+                        "type": "string",
+                        "description": "Option contract type, 'call' or 'put'; present only for option orders."
+                      },
+                      "position_effect": {
+                        "type": "string",
+                        "description": "Whether the option order opens or closes a position, e.g. 'open', 'close', 'roll'; present only for option orders."
+                      },
+                      "estimated_cost": {
+                        "type": [
+                          "null",
+                          "object"
+                        ],
+                        "properties": {
+                          "amount": {
+                            "type": "string",
+                            "description": "Decimal monetary amount as a string, e.g. '150.25'. Not a number, to avoid float rounding."
+                          },
+                          "currency_code": {
+                            "type": "string",
+                            "description": "Currency of the amount, e.g. 'USD'. Omitted when the upstream did not specify one."
+                          }
+                        },
+                        "description": "Estimated total debit (cost) of the order. Mutually exclusive with estimated_credit.",
+                        "required": [
+                          "amount"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "estimated_credit": {
+                        "type": [
+                          "null",
+                          "object"
+                        ],
+                        "properties": {
+                          "amount": {
+                            "type": "string",
+                            "description": "Decimal monetary amount as a string, e.g. '150.25'. Not a number, to avoid float rounding."
+                          },
+                          "currency_code": {
+                            "type": "string",
+                            "description": "Currency of the amount, e.g. 'USD'. Omitted when the upstream did not specify one."
+                          }
+                        },
+                        "description": "Estimated total credit (proceeds) of the order. Mutually exclusive with estimated_cost.",
+                        "required": [
+                          "amount"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "estimated_quantity": {
+                        "type": "string",
+                        "description": "Estimated fill quantity as a decimal string, when the order is sized in dollars."
+                      },
+                      "tax_lot_selection_type": {
+                        "type": "string",
+                        "description": "Tax-lot disposal method for a specified-lot sell, e.g. 'custom'. Omitted when the order uses the account's default disposal method, and never populated on actual_order."
+                      },
+                      "tax_lots": {
+                        "type": [
+                          "null",
+                          "array"
+                        ],
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "open_lot_id": {
+                              "type": "string",
+                              "description": "UUID of the open tax lot being sold."
+                            },
+                            "quantity": {
+                              "type": "string",
+                              "description": "Quantity sold from this lot as a decimal string (shares for equities, asset units for crypto)."
+                            }
+                          },
+                          "required": [
+                            "open_lot_id",
+                            "quantity"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "description": "The specific open lots to sell; present only for a specified-lot (custom) sell. Never populated on actual_order, regardless of the placed order's lot selection."
+                      }
+                    },
+                    "description": "The order as originally proposed.",
+                    "required": [
+                      "asset_class"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "actual_order": {
+                    "type": [
+                      "null",
+                      "object"
+                    ],
+                    "properties": {
+                      "asset_class": {
+                        "type": "string",
+                        "description": "Asset class of this order: ASSET_CLASS_EQUITY, ASSET_CLASS_OPTION, or ASSET_CLASS_CRYPTO."
+                      },
+                      "side": {
+                        "type": "string",
+                        "description": "Order side, e.g. 'buy', 'sell', or 'sell_short'. Omitted for contingent orders."
+                      },
+                      "order_type": {
+                        "type": "string",
+                        "description": "Order type, e.g. 'market', 'limit', 'stop_loss', or 'stop_limit'. Omitted for contingent orders."
+                      },
+                      "time_in_force": {
+                        "type": "string",
+                        "description": "How long the order stays active, e.g. 'gfd' (good for day) or 'gtc' (good till canceled). Omitted for contingent orders."
+                      },
+                      "market_hours": {
+                        "type": "string",
+                        "description": "Which trading session the order is valid for, e.g. 'regular_hours', 'extended_hours', or 'all_day_hours'. Omitted when the upstream did not specify a session."
+                      },
+                      "trigger": {
+                        "type": "string",
+                        "description": "What activates the order, e.g. 'immediate' or 'stop'. Omitted for contingent orders."
+                      },
+                      "contingency_type": {
+                        "type": "string",
+                        "description": "Advanced-order contingency, e.g. 'oco'. Omitted for standalone orders."
+                      },
+                      "sub_orders": {
+                        "type": [
+                          "null",
+                          "array"
+                        ],
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "asset_class": {
+                              "type": "string",
+                              "description": "Asset class of this sub-order."
+                            },
+                            "side": {
+                              "type": "string",
+                              "description": "Sub-order side, e.g. 'buy' or 'sell'."
+                            },
+                            "quantity": {
+                              "type": "string",
+                              "description": "Share quantity as a decimal string."
+                            },
+                            "order_type": {
+                              "type": "string",
+                              "description": "Sub-order type, e.g. 'market' or 'limit'."
+                            },
+                            "trigger": {
+                              "type": "string",
+                              "description": "What activates the sub-order: 'immediate' or 'stop'."
+                            },
+                            "limit_price": {
+                              "type": [
+                                "null",
+                                "object"
+                              ],
+                              "properties": {
+                                "amount": {
+                                  "type": "string",
+                                  "description": "Decimal monetary amount as a string, e.g. '150.25'. Not a number, to avoid float rounding."
+                                },
+                                "currency_code": {
+                                  "type": "string",
+                                  "description": "Currency of the amount, e.g. 'USD'. Omitted when the upstream did not specify one."
+                                }
+                              },
+                              "description": "Limit price when the sub-order is limit-priced.",
+                              "required": [
+                                "amount"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "stop_price": {
+                              "type": [
+                                "null",
+                                "object"
+                              ],
+                              "properties": {
+                                "amount": {
+                                  "type": "string",
+                                  "description": "Decimal monetary amount as a string, e.g. '150.25'. Not a number, to avoid float rounding."
+                                },
+                                "currency_code": {
+                                  "type": "string",
+                                  "description": "Currency of the amount, e.g. 'USD'. Omitted when the upstream did not specify one."
+                                }
+                              },
+                              "description": "Stop trigger price when the sub-order is stop-triggered.",
+                              "required": [
+                                "amount"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "time_in_force": {
+                              "type": "string",
+                              "description": "How long the sub-order stays active."
+                            },
+                            "is_primary": {
+                              "type": "boolean",
+                              "description": "Whether this sub-order triggers the remaining contingent orders."
+                            }
+                          },
+                          "required": [
+                            "asset_class",
+                            "side",
+                            "quantity",
+                            "order_type",
+                            "trigger",
+                            "time_in_force",
+                            "is_primary"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "description": "The complete sub-order set for a contingent order."
+                      },
+                      "quantity": {
+                        "type": "string",
+                        "description": "Share, contract, or coin count as a decimal string. Present for quantity-based orders; mutually exclusive with dollar_amount."
+                      },
+                      "dollar_amount": {
+                        "type": [
+                          "null",
+                          "object"
+                        ],
+                        "properties": {
+                          "amount": {
+                            "type": "string",
+                            "description": "Decimal monetary amount as a string, e.g. '150.25'. Not a number, to avoid float rounding."
+                          },
+                          "currency_code": {
+                            "type": "string",
+                            "description": "Currency of the amount, e.g. 'USD'. Omitted when the upstream did not specify one."
+                          }
+                        },
+                        "description": "Notional dollar amount for a dollar-based order. Present for dollar-based orders; mutually exclusive with quantity.",
+                        "required": [
+                          "amount"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "limit_price": {
+                        "type": [
+                          "null",
+                          "object"
+                        ],
+                        "properties": {
+                          "amount": {
+                            "type": "string",
+                            "description": "Decimal monetary amount as a string, e.g. '150.25'. Not a number, to avoid float rounding."
+                          },
+                          "currency_code": {
+                            "type": "string",
+                            "description": "Currency of the amount, e.g. 'USD'. Omitted when the upstream did not specify one."
+                          }
+                        },
+                        "description": "Limit price; present only for limit and stop-limit orders.",
+                        "required": [
+                          "amount"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "stop_price": {
+                        "type": [
+                          "null",
+                          "object"
+                        ],
+                        "properties": {
+                          "amount": {
+                            "type": "string",
+                            "description": "Decimal monetary amount as a string, e.g. '150.25'. Not a number, to avoid float rounding."
+                          },
+                          "currency_code": {
+                            "type": "string",
+                            "description": "Currency of the amount, e.g. 'USD'. Omitted when the upstream did not specify one."
+                          }
+                        },
+                        "description": "Stop (trigger) price; present only for stop-limit and stop-market orders.",
+                        "required": [
+                          "amount"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "peg_type": {
+                        "type": "string",
+                        "description": "Trailing-stop peg basis when this is a trailing stop: 'price' or 'percentage'. Omitted for non-trailing orders."
+                      },
+                      "price_peg": {
+                        "type": [
+                          "null",
+                          "object"
+                        ],
+                        "properties": {
+                          "amount": {
+                            "type": "string",
+                            "description": "Decimal monetary amount as a string, e.g. '150.25'. Not a number, to avoid float rounding."
+                          },
+                          "currency_code": {
+                            "type": "string",
+                            "description": "Currency of the amount, e.g. 'USD'. Omitted when the upstream did not specify one."
+                          }
+                        },
+                        "description": "Trailing offset as a dollar amount; present when peg_type is 'price'.",
+                        "required": [
+                          "amount"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "percentage_peg": {
+                        "type": "string",
+                        "description": "Trailing offset as a percentage (decimal string); present when peg_type is 'percentage'."
+                      },
+                      "symbol": {
+                        "type": "string",
+                        "description": "Ticker symbol of the tradable, e.g. 'AAPL' for an equity or option underlying, or 'BTC-USD' for crypto."
+                      },
+                      "strike_price": {
+                        "type": [
+                          "null",
+                          "object"
+                        ],
+                        "properties": {
+                          "amount": {
+                            "type": "string",
+                            "description": "Decimal monetary amount as a string, e.g. '150.25'. Not a number, to avoid float rounding."
+                          },
+                          "currency_code": {
+                            "type": "string",
+                            "description": "Currency of the amount, e.g. 'USD'. Omitted when the upstream did not specify one."
+                          }
+                        },
+                        "description": "Option strike price; present only for option orders.",
+                        "required": [
+                          "amount"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "expiration_date": {
+                        "type": "string",
+                        "description": "Option expiration date as 'YYYY-MM-DD'; present only for option orders."
+                      },
+                      "option_type": {
+                        "type": "string",
+                        "description": "Option contract type, 'call' or 'put'; present only for option orders."
+                      },
+                      "position_effect": {
+                        "type": "string",
+                        "description": "Whether the option order opens or closes a position, e.g. 'open', 'close', 'roll'; present only for option orders."
+                      },
+                      "estimated_cost": {
+                        "type": [
+                          "null",
+                          "object"
+                        ],
+                        "properties": {
+                          "amount": {
+                            "type": "string",
+                            "description": "Decimal monetary amount as a string, e.g. '150.25'. Not a number, to avoid float rounding."
+                          },
+                          "currency_code": {
+                            "type": "string",
+                            "description": "Currency of the amount, e.g. 'USD'. Omitted when the upstream did not specify one."
+                          }
+                        },
+                        "description": "Estimated total debit (cost) of the order. Mutually exclusive with estimated_credit.",
+                        "required": [
+                          "amount"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "estimated_credit": {
+                        "type": [
+                          "null",
+                          "object"
+                        ],
+                        "properties": {
+                          "amount": {
+                            "type": "string",
+                            "description": "Decimal monetary amount as a string, e.g. '150.25'. Not a number, to avoid float rounding."
+                          },
+                          "currency_code": {
+                            "type": "string",
+                            "description": "Currency of the amount, e.g. 'USD'. Omitted when the upstream did not specify one."
+                          }
+                        },
+                        "description": "Estimated total credit (proceeds) of the order. Mutually exclusive with estimated_cost.",
+                        "required": [
+                          "amount"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "estimated_quantity": {
+                        "type": "string",
+                        "description": "Estimated fill quantity as a decimal string, when the order is sized in dollars."
+                      },
+                      "tax_lot_selection_type": {
+                        "type": "string",
+                        "description": "Tax-lot disposal method for a specified-lot sell, e.g. 'custom'. Omitted when the order uses the account's default disposal method, and never populated on actual_order."
+                      },
+                      "tax_lots": {
+                        "type": [
+                          "null",
+                          "array"
+                        ],
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "open_lot_id": {
+                              "type": "string",
+                              "description": "UUID of the open tax lot being sold."
+                            },
+                            "quantity": {
+                              "type": "string",
+                              "description": "Quantity sold from this lot as a decimal string (shares for equities, asset units for crypto)."
+                            }
+                          },
+                          "required": [
+                            "open_lot_id",
+                            "quantity"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "description": "The specific open lots to sell; present only for a specified-lot (custom) sell. Never populated on actual_order, regardless of the placed order's lot selection."
+                      }
+                    },
+                    "description": "The reconciled order actually placed; present only when is_edited is true.",
+                    "required": [
+                      "asset_class"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "expires_at": {
+                    "type": "string",
+                    "description": "RFC3339 timestamp of when this pending approval expires."
+                  },
+                  "created_at": {
+                    "type": "string",
+                    "description": "RFC3339 timestamp of when this approval was created."
+                  },
+                  "updated_at": {
+                    "type": "string",
+                    "description": "RFC3339 timestamp of when this approval was last updated."
+                  }
+                },
+                "description": "Present only when the account requires the customer's approval before agent-placed trades execute: the order was NOT placed. Read approval.state \u2014 APPROVAL_STATE_PENDING is awaiting the customer's decision in the Robinhood app; a terminal state (e.g. APPROVAL_STATE_DECLINED, APPROVAL_STATE_EXPIRED) means this ref_id's earlier approval is already resolved. Never present otherwise.",
+                "required": [
+                  "approval_id",
+                  "account_number",
+                  "asset_class",
+                  "state",
+                  "is_edited"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "description": "Tool-specific result payload; see the inner properties for fields.",
+            "additionalProperties": false
+          },
+          "guide": {
+            "type": "string",
+            "description": "This response contains EITHER an order or an approval \u2014 check which and describe accordingly. If it contains approval, read approval.state: when it is APPROVAL_STATE_PENDING the order was NOT placed and is awaiting the customer's approval in the Robinhood app \u2014 tell the user to approve or decline it there, check status with get_trade_approvals, or withdraw it with decline_trade_approval, and do not resubmit the order or mint a new ref_id while it is pending; when it is any other, terminal state (e.g. APPROVAL_STATE_DECLINED or APPROVAL_STATE_EXPIRED) the order was NOT placed and this ref_id's earlier approval is already resolved \u2014 tell the user it was not placed, and if they still want the order, place it again with a new ref_id. If it contains order: The order has been submitted \u2014 not necessarily filled. Describe it with state. Tell the user the order was placed, summarize side, type (ALWAYS the app's name: stop_loss = \"stop order\", stop_limit = \"stop limit order\" \u2014 never show the raw values to the user), quantity (or dollar amount) phrased as an amount of the asset (e.g. '0.001542 ETH') and never as 'shares', any limit/stop prices, and the estimated fee \u2014 from estimated_fee, shown even when 0, with the fee_rate value appended verbatim in parentheses when present, e.g. '$1.23 (0.5% maker)' or '$1.23 (0.35%)', or the fee_context value appended verbatim in parentheses when fee_rate is absent and fee_context is present, e.g. '$0 (asset not eligible for fee tiers)' (never re-derive, re-label, or reword either parenthetical; none when both are absent). When tax_withholding is present, give the backup withholding as its own line in the confirmation: show whichever of tax_withholding.estimated_withholding_amount / total_withholding_amount is present (exactly one ever is), labeled \"Estimated backup withholding\" for the estimate and \"Backup withholding\" for the total, with the tax_withholding.withholding_rate value appended verbatim in parentheses, e.g. 'Estimated backup withholding: $23.88 (24%)'; never mention withholding when tax_withholding is absent. State the total from whichever net_* field the order carries \u2014 labeled estimated for net_rounded_estimated_notional, final (or \"so far\" while cumulative_quantity is below quantity) for net_rounded_executed_notional \u2014 never from rounded_estimated_notional_with_estimated_fee, which is net of the fee only and will overstate a withholding-subject sell; if neither net total is present, give no total figure. Remind them it may not have filled yet and can be checked or canceled via id. For orders entered by dollar_amount, quantity is derived at placement \u2014 from the live quote for market orders (a buy is sized at the market price like the app: debit typically ~the dollar_amount, worst case up to ~1% more; a sell likewise sized at the market price: credit typically ~the dollar_amount, worst case up to ~5% less), from the stop price for stop_loss orders (typical fill notional ~the dollar_amount, worst case up to the collar worse), from the limit price for limit and stop limit orders. For market and stop_loss present the derived quantity as estimated until the order fills; for limit and stop_limit the derived quantity is exact at placement and a buy's total is capped at the requested amount. On fee-priced accounts a sell's fee is deducted from the credit. For orders entered by quantity, the amount is exact. Identify the account by the crypto_account_number returned in the response, not by the brokerage account number the tool was called with. When tax_lots were provided, say the order sells the specified lots; otherwise do not mention lots. When lot_basis is present, add a Cost basis section under the confirmation (before the Lots section) with rows Estimated cost basis and Estimated gain/loss (and Short-term / Long-term / Other-term when present), labeled as estimates; on the Estimated gain/loss row append estimated_gain_percent in parentheses after the dollar figure, signed like it and with a percent sign, e.g. '+$2.07 (+73.7%)' or '-$1.10 (-4.2%)' \u2014 it is already rounded to one decimal place, so use it as given, never recompute it, and add no parenthetical when it is absent; the gain is not the amount credited \u2014 the total is \u2014 and it is computed before any backup withholding; do not recompute it from the Lots rows, whose per-lot cost bases are rounded separately; when lot_basis.incomplete is true say the basis covers only lots with a known cost. Informational, not tax advice. When selected_lots is present, add a Lots section under the confirmation with one row per entry, in the order given: the lot id (open_lot_id), the quantity sold from it (quantity_to_sell), and its cost basis (cost_basis; write 'unknown' when absent). Label the row short-term or long-term from term_type when present. On error, the order was NOT placed \u2014 report the error verbatim."
+          }
+        },
+        "required": [
+          "data",
+          "guide"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "preview_crypto_order",
+      "description": "Simulate a crypto order without placing it \u2014 returns the transient order shape with the estimated cost/credit and fees resolved, plus any pre-trade validation errors. Call this by default before place_crypto_order unless the user has very explicitly asked to skip the preview. Requires an agentic-enabled crypto account.\n\nParameter rules:\n- Provide exactly one of quantity or dollar_amount; dollar_amount works with every type.\n- limit_price is required for limit and stop_limit; stop_price is required for stop_loss and stop_limit.\n- symbol is resolved to a currency pair before the preview; pass a bare asset symbol (e.g. 'BTC') or a pair ('BTC-USD').",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "rhs_account_number": {
+            "type": "string",
+            "description": "Numeric brokerage account number (the 'rhs_account_number' field on get_accounts entries \u2014 distinct from the alphanumeric 'account_number'). Must be an agentic-enabled crypto account. Required. Do NOT pass rhc_account_number (the linked crypto account, labeled 'Crypto Account' on get_accounts) \u2014 that is a different identifier space and will return no crypto account found."
+          },
+          "symbol": {
+            "type": "string",
+            "description": "Crypto symbol (e.g. 'BTC', 'ETH', or 'BTC-USD'). Resolved to a currency pair before the preview. Required."
+          },
+          "side": {
+            "type": "string",
+            "description": "'buy' or 'sell'. Required."
+          },
+          "type": {
+            "type": "string",
+            "description": "'market', 'limit', 'stop_loss', or 'stop_limit'. Required. 'stop_loss' is a stop-triggered market order \u2014 despite the name it applies to buy stops too; the equity/option tools call the same concept 'stop_market'. ALWAYS call these by their app names when speaking to the user, including when listing what types are supported: 'stop_loss' is a 'stop order' and 'stop_limit' a 'stop limit order'; the raw values are tool inputs only. A user asking for a 'stop loss', 'stop order', or 'stop market' order means this stop_loss type \u2014 do not ask which stop type (but a limit price given alongside the trigger makes it stop_limit); ask only when the phrasing names no type, e.g. a bare 'stop' or 'protect my position'."
+          },
+          "quantity": {
+            "type": "string",
+            "description": "Asset quantity to trade (e.g. amount of BTC). Provide exactly one of quantity or dollar_amount. Crypto is measured in coins/units, not shares \u2014 when speaking to the user, including order confirmations, NEVER call a crypto quantity 'shares' ('shares' is equity terminology); state the amount of the asset, e.g. '0.001542 ETH'."
+          },
+          "dollar_amount": {
+            "type": "string",
+            "description": "USD notional (e.g. '100.00'). Valid with every order type. Provide exactly one of quantity or dollar_amount. For market, quantity is derived server-side: a buy is sized at the current market price \u2014 the same sizing as the app \u2014 so the typical debit is ~dollar_amount, with a worst case up to ~1% more if the price moves before execution (the buy collar); a sell is likewise sized at the current market price, so the typical credit is ~dollar_amount, with a worst case up to ~5% less if the price moves before execution (the sell collar). For stop_loss, quantity is derived from dollar_amount at stop_price (the trigger price) when the order is placed, not the live quote \u2014 the triggered market order executes near the trigger, so the typical fill notional is ~dollar_amount, with a worst case up to the collar worse (a higher debit for buy stops, a lower credit for sell stops). For limit and stop_limit, quantity is derived from dollar_amount at limit_price when the order is placed \u2014 fills execute at the limit price or better, so a buy's debit is capped at dollar_amount (no collar buffer; on fee-priced accounts fee rounding can add at most one cent) and a sell's credit is at least the derived quantity's worth at the limit, minus any fee. On fee-priced accounts a buy's quantity is sized from the fee-netted amount so the total debit targets dollar_amount, and a sell's fee is deducted from the credit."
+          },
+          "limit_price": {
+            "type": "string",
+            "description": "Limit price; required for limit and stop_limit."
+          },
+          "stop_price": {
+            "type": "string",
+            "description": "Stop trigger price; required for stop_loss and stop_limit."
+          },
+          "time_in_force": {
+            "type": "string",
+            "description": "Allowed values depend on type. market and limit: 'gtc' (good till canceled) only \u2014 market orders execute immediately so a bounded duration does not apply, and limit orders are always for 90 days; omit this field or pass 'gtc' for both. stop_loss and stop_limit: 'gtc' (good for 90 days), 'gfd' (good for day), 'gfw' (good for 7 days), or 'gfm' (good for 30 days). If omitted, defaults to gtc for market and limit, and gfd for stop_loss and stop_limit. 'ioc' is NEVER supported for crypto orders."
+          },
+          "tax_lots": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "object",
+              "properties": {
+                "open_lot_id": {
+                  "type": "string",
+                  "description": "open_lot_id of the open tax lot to sell, from get_crypto_tax_lots."
+                },
+                "quantity": {
+                  "type": "string",
+                  "description": "Units to sell from this lot as a decimal string; at most the lot's quantity_available (or exactly quantity_to_sell from a strategy result)."
+                }
+              },
+              "required": [
+                "open_lot_id",
+                "quantity"
+              ],
+              "additionalProperties": false
+            },
+            "description": "Optional specified-lot selection for a SELL order. To sell specific tax lots instead of the default disposal, pass {open_lot_id, quantity} objects whose quantities sum to the order quantity, with open_lot_id taken from the account's crypto tax lots (see the request guide). Omit for the default. Sell only; quantity-based orders only (not dollar_amount); at most 50 lots; only when the lot listing reports selection_state 'enabled'. Not every account can select lots: if the tool rejects tax_lots as not available, tell the user and offer the default disposal instead."
+          }
+        },
+        "required": [
+          "rhs_account_number",
+          "symbol",
+          "side",
+          "type"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "object",
+            "properties": {
+              "order": {
+                "type": [
+                  "null",
+                  "object"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "description": "Order UUID. Needed by cancel_crypto_order (M2.2)."
+                  },
+                  "ref_id": {
+                    "type": "string",
+                    "description": "Idempotency key the order is stored under, unique per account. Usually the ref_id passed to place_crypto_order; an order placed through a trade approval carries that approval's id instead. Omitted when the order has none."
+                  },
+                  "account_id": {
+                    "type": "string",
+                    "description": "Crypto account UUID this order belongs to. Matches the account_id on get_crypto_positions rows."
+                  },
+                  "currency_pair_id": {
+                    "type": "string",
+                    "description": "Pair UUID (e.g. BTC-USD). Pass to get_crypto_quotes for current price, or match against get_currency_pairs.id."
+                  },
+                  "currency_code": {
+                    "type": "string",
+                    "description": "Asset currency code (e.g. 'BTC', 'ETH'). Useful for grouping orders by coin without joining against get_currency_pairs."
+                  },
+                  "side": {
+                    "type": "string",
+                    "description": "'buy' or 'sell'."
+                  },
+                  "type": {
+                    "type": "string",
+                    "description": "'market', 'limit', 'stop_loss', or 'stop_limit'. 'stop_loss' is a stop-triggered market order \u2014 despite the name it applies to buy stops too; the equity/option tools call the same concept 'stop_market'. ALWAYS call these by their app names when speaking to the user, including when listing what types are supported: 'stop_loss' is a 'stop order' and 'stop_limit' a 'stop limit order'; the raw values are tool inputs only."
+                  },
+                  "state": {
+                    "type": "string",
+                    "description": "Raw lifecycle state: new, queued, unconfirmed, confirmed, partially_filled, filled, canceled, rejected, failed, voided. Combine with derived_state for clearer end-state classification."
+                  },
+                  "derived_state": {
+                    "type": "string",
+                    "description": "Normalized lifecycle classification, e.g. 'open' / 'closed' / similar shorthand the upstream computes from raw state + fills. Prefer over state for user-facing summaries."
+                  },
+                  "state_group": {
+                    "type": "string",
+                    "description": "'open' or 'closed' \u2014 the headline answer to 'is this order still working?'."
+                  },
+                  "time_in_force": {
+                    "type": "string",
+                    "description": "'gtc' (good till canceled), 'gfd' (good for day), 'ioc' (immediate or cancel), 'gfw' (good for week), 'gfm' (good for month)."
+                  },
+                  "quantity": {
+                    "type": [
+                      "null",
+                      "string"
+                    ],
+                    "description": "Originally-requested asset quantity. On dollar-based orders the server derives it at placement: from the quote for market and from the stop price for stop_loss (treat those as estimated until fills confirm them), and from the limit price for limit/stop_limit (exact at placement)."
+                  },
+                  "cumulative_quantity": {
+                    "type": "string",
+                    "description": "Total asset quantity filled so far. Less than quantity while partially filled; equal once filled."
+                  },
+                  "canceled_quantity": {
+                    "type": [
+                      "null",
+                      "string"
+                    ],
+                    "description": "Quantity that was canceled before fill (only populated on partial-fill-then-cancel paths)."
+                  },
+                  "price": {
+                    "type": [
+                      "null",
+                      "string"
+                    ],
+                    "description": "Order price (interpretation depends on type \u2014 limit price for limit; for stop_loss it is the collared worst-case execution bound, NOT the trigger, which lives in stop_price; for market it is the raw quote side-price on a preview_crypto_order response \u2014 the same price the app displays, NOT collared \u2014 but the collared worst-case execution bound on placed orders; stablecoin pairs are never collared, so their preview and placed prices both carry the raw quote). Use limit_price / stop_price for the unambiguous fields."
+                  },
+                  "limit_price": {
+                    "type": [
+                      "null",
+                      "string"
+                    ],
+                    "description": "Limit price for limit / stop_limit orders. Null for market / stop_loss."
+                  },
+                  "stop_price": {
+                    "type": [
+                      "null",
+                      "string"
+                    ],
+                    "description": "Stop trigger price for stop_loss / stop_limit orders. Null for market / limit."
+                  },
+                  "average_price": {
+                    "type": [
+                      "null",
+                      "string"
+                    ],
+                    "description": "Volume-weighted average fill price across executions. Null until the first fill."
+                  },
+                  "entered_price": {
+                    "type": [
+                      "null",
+                      "string"
+                    ],
+                    "description": "Price the user originally entered (pre-collaring). Different from limit_price after server-side collaring adjusts the order."
+                  },
+                  "rounded_executed_notional": {
+                    "type": [
+                      "null",
+                      "string"
+                    ],
+                    "description": "Total notional filled so far in the quote currency, rounded to 2 decimals."
+                  },
+                  "executions": {
+                    "type": [
+                      "null",
+                      "array"
+                    ],
+                    "items": {
+                      "type": [
+                        "null",
+                        "object"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "description": "Execution UUID."
+                        },
+                        "price": {
+                          "type": "string",
+                          "description": "Reported fill price per unit asset (e.g. USD per BTC). For the price the user actually paid after venue adjustments, use effective_price."
+                        },
+                        "effective_price": {
+                          "type": "string",
+                          "description": "Per-unit price after venue fees or price adjustments are applied \u2014 closer to the user's realized fill economics than price."
+                        },
+                        "quantity": {
+                          "type": "string",
+                          "description": "Asset quantity filled in this execution."
+                        },
+                        "notional": {
+                          "type": "string",
+                          "description": "effective_price * quantity, rounded to 2 decimals where applicable."
+                        },
+                        "exchange_name": {
+                          "type": "string",
+                          "description": "Routing venue name. Treat as informational; do not surface unless the user asks about routing."
+                        },
+                        "timestamp": {
+                          "type": "string",
+                          "description": "When the fill occurred (UTC)."
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "price",
+                        "effective_price",
+                        "quantity",
+                        "notional",
+                        "timestamp"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "description": "Per-fill detail. Reference for per-execution timing or price questions; for headline 'what did this fill at?' use average_price."
+                  },
+                  "initiator_type": {
+                    "type": "string",
+                    "description": "Source that placed the order: 'api_trading', 'trading_view', 'recurring', 'paycheck', 'rh_assistant', 'agentic_trading' (when nummus adds that enum value), or one of the internal crypto-specific values. Tells the user whether they placed this order via app, API, recurring buy, or an agent."
+                  },
+                  "speculative": {
+                    "type": "boolean",
+                    "description": "True when the order was created as a speculative pre-trade check (no upstream side effect). Should always be false on real placed orders; populated read-only by upstream."
+                  },
+                  "created_at": {
+                    "type": "string",
+                    "description": "When the order was created (UTC)."
+                  },
+                  "updated_at": {
+                    "type": "string",
+                    "description": "Last server-side state update (UTC) \u2014 fill, cancel, reject, etc."
+                  },
+                  "canceled_at": {
+                    "type": [
+                      "null",
+                      "string"
+                    ],
+                    "description": "When the cancel was acknowledged. Null when the order has not been canceled."
+                  },
+                  "routing": {
+                    "type": "string",
+                    "description": "How the order is routed for execution. Present verbatim as the routing line item; absent when routing information is unavailable."
+                  },
+                  "rounded_estimated_notional_with_estimated_fee": {
+                    "type": [
+                      "null",
+                      "string"
+                    ],
+                    "description": "Estimated total cost (buy) or net proceeds (sell) in the quote currency, with ONLY the estimated fee already included. It does NOT include any additional taxes or deductions."
+                  },
+                  "rounded_uncollared_estimated_notional_with_estimated_fee": {
+                    "type": [
+                      "null",
+                      "string"
+                    ],
+                    "description": "Same as rounded_estimated_notional_with_estimated_fee but before price collaring. Null when collaring does not apply."
+                  },
+                  "rounded_executed_notional_with_fee": {
+                    "type": [
+                      "null",
+                      "string"
+                    ],
+                    "description": "Notional actually executed so far only including fees without netting additional taxes, in the quote currency. Grows as fills come in; 0 before the first fill. For the executed figure net of all taxes and fees use net_rounded_executed_notional."
+                  },
+                  "total_executed_notional": {
+                    "type": [
+                      "null",
+                      "string"
+                    ],
+                    "description": "Total executed notional so far only including fees without netting additional taxes. Null until there are fills."
+                  },
+                  "net_rounded_estimated_notional": {
+                    "type": [
+                      "null",
+                      "string"
+                    ],
+                    "description": "Estimated total cost (buy) or credit (sell) net of ALL taxes and fees. On a preview, present this as the estimated total cost or credit line item alongside the separate estimated_fee value. Never subtract the fee or taxes from it again. Null when an order has fills."
+                  },
+                  "net_rounded_executed_notional": {
+                    "type": [
+                      "null",
+                      "string"
+                    ],
+                    "description": "Executed total cost (buy) or credit (sell) net of ALL taxes and fees \u2014 the definitive amount actually debited or credited. Null before the first fill. Grows as fills come in. Never subtract the fee or any taxes from it again."
+                  },
+                  "fees": {
+                    "type": [
+                      "null",
+                      "array"
+                    ],
+                    "items": {
+                      "type": [
+                        "null",
+                        "object"
+                      ],
+                      "properties": {
+                        "fee_structure": {
+                          "type": "string",
+                          "description": "How the fee was computed (e.g. a fixed percentage or a volume-tiered rate)."
+                        },
+                        "fee_data": {
+                          "type": [
+                            "null",
+                            "object"
+                          ],
+                          "properties": {
+                            "fee_type": {
+                              "type": "string",
+                              "description": "Fee category (e.g. a transaction/spread fee)."
+                            },
+                            "fee_amount": {
+                              "type": [
+                                "null",
+                                "string"
+                              ],
+                              "description": "Fee amount in the quote currency (USD)."
+                            },
+                            "fee_ratio": {
+                              "type": [
+                                "null",
+                                "string"
+                              ],
+                              "description": "Rate this fee was computed at, when applicable."
+                            }
+                          },
+                          "description": "This fee's amount, type, and rate.",
+                          "additionalProperties": false
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "description": "Itemized fee breakdown for exchange-routed orders. Empty or absent when the order carries no itemized fees."
+                  },
+                  "tax_withholding": {
+                    "type": [
+                      "null",
+                      "object"
+                    ],
+                    "properties": {
+                      "withholding_rate": {
+                        "type": "string",
+                        "description": "Withholding rate preformatted as a percent (e.g. '24%'), aggregated across the federal and any state portion. Print verbatim. Absent when no rate is available."
+                      },
+                      "estimated_withholding_amount": {
+                        "type": [
+                          "null",
+                          "string"
+                        ],
+                        "description": "Estimated USD to be withheld from this sell's proceeds. Present only while cumulative_quantity is 0. Exactly one of this and total_withholding_amount is ever present, so read the one that is there."
+                      },
+                      "total_withholding_amount": {
+                        "type": [
+                          "null",
+                          "string"
+                        ],
+                        "description": "Actual USD withheld from proceeds across fills so far (final once fully filled). Present only once cumulative_quantity is positive. Exactly one of this and estimated_withholding_amount is ever present, so read the one that is there."
+                      }
+                    },
+                    "description": "Backup withholding on this sell order's proceeds. Present only when withholding applies (sell orders for subject users; never on IRA accounts) \u2014 when absent, do not mention withholding. amount and withholding_rate are the display-ready figure and percent.",
+                    "additionalProperties": false
+                  }
+                },
+                "description": "Transient preview of the order \u2014 same shape as a placed order (get_crypto_orders results), with estimated cost/credit and fees resolved. No order was placed; id and lifecycle fields are not meaningful.",
+                "required": [
+                  "id",
+                  "account_id",
+                  "currency_pair_id",
+                  "side",
+                  "type",
+                  "state",
+                  "time_in_force",
+                  "quantity",
+                  "cumulative_quantity",
+                  "created_at",
+                  "updated_at"
+                ],
+                "additionalProperties": false
+              },
+              "fee_rate": {
+                "type": "string",
+                "description": "Rate the estimated fee was computed at, preformatted: the bare percent on single-rate fee pricing (e.g. '0.35%'), suffixed with the liquidity role on maker/taker-priced accounts (e.g. '0.05% maker', '0.1% taker'; '0.05% reduced', '0.1% standard' on accounts using reduced/standard fee names \u2014 reduced is the maker rate and standard is the taker rate, so use reduced/standard with those accounts). Absent when no fee rate applies to this order."
+              },
+              "estimated_fee": {
+                "type": "string",
+                "description": "Estimated fee for this order in USD. 0 when no fee applies to this order. The estimated total cost already includes this fee \u2014 never add them together or annotate the total with it."
+              },
+              "fee_context": {
+                "type": "string",
+                "description": "Why no fee rate applies to this order even though the account trades with fee pricing, preformatted for display (e.g. 'asset not eligible for fee tiers'). Only ever present when fee_rate is absent; absent when no explanation applies."
+              },
+              "crypto_account_number": {
+                "type": "string",
+                "description": "Crypto account number the order is previewed against. Present THIS as the account to the user \u2014 not the brokerage account number used to look the account up. When absent, refer to the account as the user's linked crypto account."
+              },
+              "lot_basis": {
+                "type": [
+                  "null",
+                  "object"
+                ],
+                "properties": {
+                  "estimated_cost_basis": {
+                    "type": "string",
+                    "description": "Estimated total cost of the units sold from the selected lots whose cost is known, from each lot's rounded per-unit cost. An estimate, informational, not tax advice."
+                  },
+                  "estimated_gain": {
+                    "type": "string",
+                    "description": "Estimated gain on the lots with a known cost (negative is a loss): their pro-rata share of the estimated proceeds net of the fee, before any backup withholding, minus estimated_cost_basis. An estimate, not tax advice."
+                  },
+                  "estimated_gain_percent": {
+                    "type": [
+                      "null",
+                      "string"
+                    ],
+                    "description": "estimated_gain as a percent of estimated_cost_basis, rounded to one decimal place (negative is a loss). Absent when estimated_cost_basis is zero."
+                  },
+                  "short_term_gain": {
+                    "type": [
+                      "null",
+                      "string"
+                    ],
+                    "description": "The part of estimated_gain from lots held short-term (term_type 'st'). Present when at least one selected lot with a known cost is short-term."
+                  },
+                  "long_term_gain": {
+                    "type": [
+                      "null",
+                      "string"
+                    ],
+                    "description": "The part of estimated_gain from lots held long-term (term_type 'lt'). Present when at least one selected lot with a known cost is long-term."
+                  },
+                  "other_term_gain": {
+                    "type": [
+                      "null",
+                      "string"
+                    ],
+                    "description": "Gain on lots whose holding term is not known or not a plain short/long term; tell the user this portion could not be classified."
+                  },
+                  "incomplete": {
+                    "type": "boolean",
+                    "description": "True when at least one selected lot has no known cost, so estimated_cost_basis and estimated_gain cover only the lots whose cost is known."
+                  },
+                  "uncovered_quantity": {
+                    "type": [
+                      "null",
+                      "string"
+                    ],
+                    "description": "Units of this sale with no known cost basis; estimated_cost_basis and estimated_gain exclude them. Tell the user the estimate covers only part of the sale."
+                  }
+                },
+                "description": "Estimated cost basis and gain for a specified-lot sell, from the selected lots' rounded per-unit costs and the estimated proceeds net of the fee. Present only when tax_lots was supplied and at least one selected lot has a known cost. All figures are estimates, informational, not tax advice.",
+                "required": [
+                  "estimated_cost_basis",
+                  "estimated_gain"
+                ],
+                "additionalProperties": false
+              },
+              "selected_lots": {
+                "type": [
+                  "null",
+                  "array"
+                ],
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "open_lot_id": {
+                      "type": "string",
+                      "description": "The open tax lot, in the canonical form get_crypto_tax_lots lists it."
+                    },
+                    "quantity_available": {
+                      "type": [
+                        "null",
+                        "string"
+                      ],
+                      "description": "Units of this lot still selectable when it was looked up, net of units reserved by other open sell orders. Absent when the lot could not be looked up."
+                    },
+                    "quantity_to_sell": {
+                      "type": "string",
+                      "description": "Units this order sells from the lot, as requested."
+                    },
+                    "cost_per_unit": {
+                      "type": [
+                        "null",
+                        "string"
+                      ],
+                      "description": "The lot's per-unit cost in USD as reported for the lot, already rounded there \u2014 an estimate, not the exact basis. Absent when the lot's cost is not known."
+                    },
+                    "cost_basis": {
+                      "type": [
+                        "null",
+                        "string"
+                      ],
+                      "description": "Estimated cost of the units this order sells from the lot: cost_per_unit times quantity_to_sell, rounded to two decimals. Absent when the lot's cost is not known."
+                    },
+                    "term_type": {
+                      "type": "string",
+                      "description": "'lt' long-term, 'st' short-term, 'unknown' when the holding term is not known; other values are special cases. Absent when the lot could not be looked up."
+                    }
+                  },
+                  "required": [
+                    "open_lot_id",
+                    "quantity_to_sell"
+                  ],
+                  "additionalProperties": false
+                },
+                "description": "The lots this order sells from, in the order requested. Present only when tax_lots was supplied. Render them as a Lots section of the order table: one row per lot with open_lot_id, quantity_to_sell, and cost_basis (write 'unknown' when cost_basis is absent)."
+              },
+              "customer_approval_required": {
+                "type": [
+                  "null",
+                  "boolean"
+                ],
+                "description": "True when the customer must approve this order in the Robinhood app before it executes. False when it executes as soon as it is placed. Absent when it was not determined for this order."
+              },
+              "customer_approval_required_reason": {
+                "type": "string",
+                "description": "Which rule made approval necessary, so the reason can be given rather than asserted. 'account_setting' means the customer has trade approvals turned on for the account. 'regional_restriction' means crypto orders need approval under a restriction that applies where the customer lives, even with the account setting off. 'mandatory_model' means the AI model handling this request requires approval for every trade, even with the account setting off. Absent when approval is not required."
+              }
+            },
+            "description": "Tool-specific result payload; see the inner properties for fields.",
+            "required": [
+              "order",
+              "estimated_fee"
+            ],
+            "additionalProperties": false
+          },
+          "guide": {
+            "type": "string",
+            "description": "When customer_approval_required is true, call place_crypto_order immediately with the same parameters, presenting nothing and asking for no confirmation: this call does not execute the order, the customer sees it in the Robinhood app and approves or declines it there, so confirming here asks for the same consent twice. Carry customer_approval_required_reason into what you tell the user once that call returns, so they hear why the order needs approving and not only that it does; give no cause when it is absent. When customer_approval_required is false or absent, follow the rest of this guide. This tool does NOT place the order \u2014 it returns a preview for the user to review. Present the preview as a table with exactly these rows, in this order: 1) side; 2) asset \u2014 symbol and pair, e.g. DOGE (DOGE-USD); 3) order type \u2014 ALWAYS the app's name: stop_loss = \"stop order\", stop_limit = \"stop limit order\"; never show the raw stop_loss/stop_limit values to the user; 4) quantity \u2014 always phrased as an amount of the asset (e.g. '0.001542 ETH'), never as 'shares'; for orders entered by quantity, the exact amount the user specified (for market and stop_loss label the per-unit price as estimated); for orders entered by dollar_amount, include the per-unit price (for market the response's price \u2014 the raw quote, the same price the app displays \u2014 with quantity derivation described under dollar_amount; the stop price for stop_loss, the limit price for limit/stop_limit) \u2014 label the quantity estimated for market and stop_loss, and exact for limit and stop_limit (derived deterministically from the limit price at placement); 5) limit price (limit and stop_limit orders only); 6) stop price (stop orders only); 7) notional entered (only when the resolved amount differs from what the user asked for); 8) time in force; 9) estimated fee \u2014 from estimated_fee, shown even when 0, with the fee_rate value appended verbatim in parentheses when present, e.g. \"$1.23 (0.5% maker)\" or \"$1.23 (0.35%)\"; when fee_rate is absent and fee_context is present, append the fee_context value verbatim in parentheses instead, e.g. \"$0 (asset not eligible for fee tiers)\" \u2014 never re-derive, re-label, or reword either parenthetical, and no parenthetical when both are absent; 10) estimated backup withholding \u2014 include this row ONLY when the order's tax_withholding is present, from tax_withholding.estimated_withholding_amount (the only amount a preview carries \u2014 it has no fills), labeled \"Estimated backup withholding\", with the tax_withholding.withholding_rate value appended verbatim in parentheses when present, e.g. \"$23.88 (24%)\"; never raise withholding at all when tax_withholding is absent; 11) estimated total cost or credit \u2014 from the order's net_rounded_estimated_notional, which is ALREADY net of both the fee in row 9 and the withholding in row 10, so present it as the bottom line and never subtract either row from it again; if it is absent, omit this row rather than substituting any other field as the total; label it plainly without qualifiers like \"(fee included)\"; ignore order.rounded_estimated_notional_with_estimated_fee, which is net of the fee only and will overstate a withholding-subject sell; a limit buy's final debit never exceeds it, a market buy's final debit is typically ~it with a worst case up to the collar more, a market sell's credit is typically ~it with a worst case up to the collar less, a stop order's fill notional is typically ~it with a worst case up to the collar worse; mention the collar sizing (see dollar_amount) only when the user asks why it is estimated; 12) routing. Directly below the table, add this line verbatim: \"You can switch between Market Maker Routing and Exchange Routing anytime in the Robinhood app under Settings \u2192 Crypto \u2192 Fee Tiers.\" \u2014 omit it only when the routing row is absent. When lot_basis is present, add a Cost basis section under the order table (before the Lots section, never inside the order table) with rows Estimated cost basis and Estimated gain/loss (and Short-term / Long-term / Other-term when present), labeled as estimates; on the Estimated gain/loss row append estimated_gain_percent in parentheses after the dollar figure, signed like it and with a percent sign, e.g. \"+$2.07 (+73.7%)\" or \"-$1.10 (-4.2%)\" \u2014 it is already rounded to one decimal place, so use it as given, never recompute it, and add no parenthetical when it is absent; the gain is not the amount credited \u2014 the total row is \u2014 and it is computed before any backup withholding; do not recompute it from the Lots rows, whose per-lot cost bases are rounded separately; when lot_basis.incomplete is true say the basis covers only lots with a known cost. Informational, not tax advice. When selected_lots is present, add a Lots section under the order table with one row per entry, in the order given: the lot id (open_lot_id), the quantity sold from it (quantity_to_sell), and its cost basis (cost_basis; write 'unknown' when absent). Label the row short-term or long-term from term_type when present. These are the lots the user chose \u2014 show them before asking for confirmation. When tax_withholding is present, add this sentence verbatim directly below the table: \"Your order will be subject to backup withholding. Please confirm your tax status at https://robinhood.com/tax-certification.\" \u2014 exactly as written, no rewording; omit it entirely when tax_withholding is absent. Identify the account by the crypto_account_number returned in the response, not by the brokerage account number the tool was called with. A request for a 'stop loss', 'stop order', or 'stop market' order is the stop_loss type \u2014 do not ask which stop type (a limit price given alongside the trigger makes it stop_limit); ask only when the phrasing names no type, e.g. a bare 'stop' or 'protect my position'. Then get explicit user confirmation before calling place_crypto_order. No order was created and no id was assigned; the response mirrors an order but is transient. When tax_lots were provided, say the order will sell the specified lots and that lot availability was checked for this preview and is re-checked at placement; otherwise do not mention lots."
+          }
+        },
+        "required": [
+          "data",
+          "guide"
+        ],
+        "additionalProperties": false
+      }
+    }
+  ]
+}

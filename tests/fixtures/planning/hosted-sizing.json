@@ -1,0 +1,400 @@
+{
+  "commit": "e8969265fe29fdafe34fce1f99022485b332de0a",
+  "sha256": "4d34fadcffaa146725e6fa716c807bbd80214ebb609f87f58a4c094761d0e721",
+  "sizing": [
+    {
+      "name": "fractional buy",
+      "input": {
+        "symbol": "VTI",
+        "targetWeightPercent": 50,
+        "bucketValueUsd": "100",
+        "currentInstrumentValueUsd": "0",
+        "currentQuantity": "0",
+        "availableCashUsd": "100",
+        "markPriceUsd": "10",
+        "maximumOrderNotionalUsd": "1000"
+      },
+      "expected": {
+        "disposition": "order",
+        "targetValueUsd": "50",
+        "currentValueUsd": "0",
+        "deltaValueUsd": "50",
+        "order": {
+          "symbol": "VTI",
+          "side": "buy",
+          "type": "market",
+          "dollarAmount": "50"
+        }
+      }
+    },
+    {
+      "name": "cent flooring",
+      "input": {
+        "symbol": "VTI",
+        "targetWeightPercent": 33.33,
+        "bucketValueUsd": "100.01",
+        "currentInstrumentValueUsd": "0",
+        "currentQuantity": "0",
+        "availableCashUsd": "100",
+        "markPriceUsd": "10",
+        "maximumOrderNotionalUsd": "1000"
+      },
+      "expected": {
+        "disposition": "order",
+        "targetValueUsd": "33.333333",
+        "currentValueUsd": "0",
+        "deltaValueUsd": "33.333333",
+        "order": {
+          "symbol": "VTI",
+          "side": "buy",
+          "type": "market",
+          "dollarAmount": "33.33"
+        }
+      }
+    },
+    {
+      "name": "below minimum",
+      "input": {
+        "symbol": "VTI",
+        "targetWeightPercent": 50,
+        "bucketValueUsd": "1",
+        "currentInstrumentValueUsd": "0",
+        "currentQuantity": "0",
+        "availableCashUsd": "100",
+        "markPriceUsd": "10",
+        "maximumOrderNotionalUsd": "1000"
+      },
+      "expected": {
+        "disposition": "skip",
+        "reason": "below_minimum_order",
+        "targetValueUsd": "0.5",
+        "currentValueUsd": "0",
+        "deltaValueUsd": "0.5"
+      }
+    },
+    {
+      "name": "exact minimum",
+      "input": {
+        "symbol": "VTI",
+        "targetWeightPercent": 50,
+        "bucketValueUsd": "2",
+        "currentInstrumentValueUsd": "0",
+        "currentQuantity": "0",
+        "availableCashUsd": "100",
+        "markPriceUsd": "10",
+        "maximumOrderNotionalUsd": "1000"
+      },
+      "expected": {
+        "disposition": "order",
+        "targetValueUsd": "1",
+        "currentValueUsd": "0",
+        "deltaValueUsd": "1",
+        "order": {
+          "symbol": "VTI",
+          "side": "buy",
+          "type": "market",
+          "dollarAmount": "1"
+        }
+      }
+    },
+    {
+      "name": "threshold",
+      "input": {
+        "symbol": "VTI",
+        "targetWeightPercent": 50,
+        "bucketValueUsd": "100",
+        "currentInstrumentValueUsd": "49.9",
+        "currentQuantity": "0",
+        "availableCashUsd": "100",
+        "markPriceUsd": "10",
+        "maximumOrderNotionalUsd": "1000"
+      },
+      "expected": {
+        "disposition": "skip",
+        "reason": "within_rebalance_threshold",
+        "targetValueUsd": "50",
+        "currentValueUsd": "49.9",
+        "deltaValueUsd": "0.1"
+      }
+    },
+    {
+      "name": "no cash",
+      "input": {
+        "symbol": "VTI",
+        "targetWeightPercent": 50,
+        "bucketValueUsd": "100",
+        "currentInstrumentValueUsd": "0",
+        "currentQuantity": "0",
+        "availableCashUsd": "0",
+        "markPriceUsd": "10",
+        "maximumOrderNotionalUsd": "1000"
+      },
+      "expected": {
+        "disposition": "defer",
+        "reason": "insufficient_bucket_cash",
+        "targetValueUsd": "50",
+        "currentValueUsd": "0",
+        "deltaValueUsd": "50"
+      }
+    },
+    {
+      "name": "cash capped",
+      "input": {
+        "symbol": "VTI",
+        "targetWeightPercent": 50,
+        "bucketValueUsd": "100",
+        "currentInstrumentValueUsd": "0",
+        "currentQuantity": "0",
+        "availableCashUsd": "10",
+        "markPriceUsd": "10",
+        "maximumOrderNotionalUsd": "1000",
+        "capBuyToCash": true
+      },
+      "expected": {
+        "disposition": "order",
+        "targetValueUsd": "50",
+        "currentValueUsd": "0",
+        "deltaValueUsd": "50",
+        "order": {
+          "symbol": "VTI",
+          "side": "buy",
+          "type": "market",
+          "dollarAmount": "10"
+        }
+      }
+    },
+    {
+      "name": "notional cap",
+      "input": {
+        "symbol": "VTI",
+        "targetWeightPercent": 50,
+        "bucketValueUsd": "100",
+        "currentInstrumentValueUsd": "0",
+        "currentQuantity": "0",
+        "availableCashUsd": "100",
+        "markPriceUsd": "10",
+        "maximumOrderNotionalUsd": "20"
+      },
+      "expected": {
+        "disposition": "defer",
+        "reason": "order_notional_limit",
+        "targetValueUsd": "50",
+        "currentValueUsd": "0",
+        "deltaValueUsd": "50"
+      }
+    },
+    {
+      "name": "partial sell",
+      "input": {
+        "symbol": "VTI",
+        "targetWeightPercent": 50,
+        "bucketValueUsd": "100",
+        "currentInstrumentValueUsd": "70",
+        "currentQuantity": "7",
+        "availableCashUsd": "100",
+        "markPriceUsd": "10",
+        "maximumOrderNotionalUsd": "1000"
+      },
+      "expected": {
+        "disposition": "order",
+        "targetValueUsd": "50",
+        "currentValueUsd": "70",
+        "deltaValueUsd": "20",
+        "order": {
+          "symbol": "VTI",
+          "side": "sell",
+          "type": "market",
+          "quantity": "2"
+        }
+      }
+    },
+    {
+      "name": "sell no mark",
+      "input": {
+        "symbol": "VTI",
+        "targetWeightPercent": 50,
+        "bucketValueUsd": "100",
+        "currentInstrumentValueUsd": "70",
+        "currentQuantity": "7",
+        "availableCashUsd": "100",
+        "markPriceUsd": null,
+        "maximumOrderNotionalUsd": "1000"
+      },
+      "expected": {
+        "disposition": "defer",
+        "reason": "missing_mark_price",
+        "targetValueUsd": "50",
+        "currentValueUsd": "70",
+        "deltaValueUsd": "20"
+      }
+    },
+    {
+      "name": "sell no quantity",
+      "input": {
+        "symbol": "VTI",
+        "targetWeightPercent": 50,
+        "bucketValueUsd": "100",
+        "currentInstrumentValueUsd": "70",
+        "currentQuantity": "0",
+        "availableCashUsd": "100",
+        "markPriceUsd": "10",
+        "maximumOrderNotionalUsd": "1000"
+      },
+      "expected": {
+        "disposition": "defer",
+        "reason": "insufficient_attributed_quantity",
+        "targetValueUsd": "50",
+        "currentValueUsd": "70",
+        "deltaValueUsd": "20"
+      }
+    },
+    {
+      "name": "sell headroom",
+      "input": {
+        "symbol": "VTI",
+        "targetWeightPercent": 50,
+        "bucketValueUsd": "100",
+        "currentInstrumentValueUsd": "51.01",
+        "currentQuantity": "5.101",
+        "availableCashUsd": "100",
+        "markPriceUsd": "10",
+        "maximumOrderNotionalUsd": "1000"
+      },
+      "expected": {
+        "disposition": "skip",
+        "reason": "below_minimum_order",
+        "targetValueUsd": "50",
+        "currentValueUsd": "51.01",
+        "deltaValueUsd": "1.01"
+      }
+    },
+    {
+      "name": "exit dust",
+      "input": {
+        "symbol": "VTI",
+        "targetWeightPercent": 0,
+        "bucketValueUsd": "100",
+        "currentInstrumentValueUsd": "12.3456789",
+        "currentQuantity": "1.23456789",
+        "availableCashUsd": "100",
+        "markPriceUsd": "10",
+        "maximumOrderNotionalUsd": "1000"
+      },
+      "expected": {
+        "disposition": "order",
+        "targetValueUsd": "0",
+        "currentValueUsd": "12.3456789",
+        "deltaValueUsd": "12.3456789",
+        "order": {
+          "symbol": "VTI",
+          "side": "sell",
+          "type": "market",
+          "quantity": "1.234567"
+        }
+      }
+    },
+    {
+      "name": "basis point weight",
+      "input": {
+        "symbol": "VTI",
+        "targetWeightPercent": 0.01,
+        "bucketValueUsd": "100000",
+        "currentInstrumentValueUsd": "0",
+        "currentQuantity": "0",
+        "availableCashUsd": "100000",
+        "markPriceUsd": "10",
+        "maximumOrderNotionalUsd": "1000",
+        "rebalanceThresholdBps": 0
+      },
+      "expected": {
+        "disposition": "order",
+        "targetValueUsd": "10",
+        "currentValueUsd": "0",
+        "deltaValueUsd": "10",
+        "order": {
+          "symbol": "VTI",
+          "side": "buy",
+          "type": "market",
+          "dollarAmount": "10"
+        }
+      }
+    },
+    {
+      "name": "explicit venue minimum",
+      "input": {
+        "symbol": "VTI",
+        "targetWeightPercent": 50,
+        "bucketValueUsd": "8",
+        "currentInstrumentValueUsd": "0",
+        "currentQuantity": "0",
+        "availableCashUsd": "100",
+        "markPriceUsd": "10",
+        "maximumOrderNotionalUsd": "1000",
+        "minimumOrderNotionalUsd": "5"
+      },
+      "expected": {
+        "disposition": "skip",
+        "reason": "below_minimum_order",
+        "targetValueUsd": "4",
+        "currentValueUsd": "0",
+        "deltaValueUsd": "4"
+      }
+    }
+  ],
+  "conservation": [
+    {
+      "orders": [
+        {
+          "symbol": "VTI",
+          "dollarAmount": "33.33"
+        },
+        {
+          "symbol": "BND",
+          "dollarAmount": "33.33"
+        },
+        {
+          "symbol": "VXUS",
+          "dollarAmount": "33.33"
+        }
+      ],
+      "intended": "100",
+      "cash": "100",
+      "expected": [
+        {
+          "symbol": "VTI",
+          "dollarAmount": "33.33"
+        },
+        {
+          "symbol": "BND",
+          "dollarAmount": "33.34"
+        },
+        {
+          "symbol": "VXUS",
+          "dollarAmount": "33.33"
+        }
+      ]
+    },
+    {
+      "orders": [
+        {
+          "symbol": "VTI",
+          "dollarAmount": "10"
+        }
+      ],
+      "intended": "20",
+      "cash": "10",
+      "expected": [
+        {
+          "symbol": "VTI",
+          "dollarAmount": "10"
+        }
+      ]
+    },
+    {
+      "orders": [],
+      "intended": "100",
+      "cash": "100",
+      "expected": []
+    }
+  ]
+}

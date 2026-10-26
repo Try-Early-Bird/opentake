@@ -1,0 +1,297 @@
+{
+  "coinbase_orders_list": {
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "portfolio_id": {
+          "type": "string",
+          "description": "Scope to a specific portfolio (defaults to all portfolios the caller can access)"
+        },
+        "status": {
+          "type": "string",
+          "description": "Filter by status"
+        },
+        "product_ids": {
+          "type": "string",
+          "description": "Filter by product (e.g. BTC-USD). Comma-separated for multiple."
+        },
+        "side": {
+          "type": "string",
+          "description": "Filter by side",
+          "enum": [
+            "BUY",
+            "SELL"
+          ],
+          "example": "BUY"
+        },
+        "product_type": {
+          "type": "string",
+          "description": "Filter by product type",
+          "enum": [
+            "SPOT",
+            "FUTURE",
+            "EQUITY"
+          ],
+          "example": "SPOT"
+        },
+        "start": {
+          "type": "string",
+          "description": "Start date (RFC 3339 with timezone, e.g. 2024-01-01T00:00:00Z)",
+          "format": "date-time"
+        },
+        "end": {
+          "type": "string",
+          "description": "End date (RFC 3339 with timezone, e.g. 2024-12-31T23:59:59Z)",
+          "format": "date-time"
+        },
+        "limit": {
+          "type": "integer",
+          "description": "Results per page"
+        },
+        "cursor": {
+          "type": "string",
+          "description": "Pagination cursor"
+        }
+      }
+    },
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "outputSchema": null
+  },
+  "coinbase_orders_fills": {
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "portfolio_id": {
+          "type": "string",
+          "description": "Scope to a specific portfolio (defaults to all portfolios the caller can access)"
+        },
+        "product_ids": {
+          "type": "string",
+          "description": "Filter by product (e.g. BTC-USD)"
+        },
+        "order_ids": {
+          "type": "array",
+          "description": "Filter by order ID"
+        },
+        "side": {
+          "type": "string",
+          "description": "Filter by side",
+          "enum": [
+            "BUY",
+            "SELL"
+          ],
+          "example": "BUY"
+        },
+        "start": {
+          "type": "string",
+          "description": "Start time (RFC 3339 with timezone, e.g. 2024-01-01T00:00:00Z)",
+          "format": "date-time"
+        },
+        "end": {
+          "type": "string",
+          "description": "End time (RFC 3339 with timezone, e.g. 2024-12-31T23:59:59Z)",
+          "format": "date-time"
+        },
+        "limit": {
+          "type": "integer",
+          "description": "Results per page"
+        },
+        "cursor": {
+          "type": "string",
+          "description": "Pagination cursor"
+        }
+      }
+    },
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "outputSchema": null
+  },
+  "coinbase_portfolios_get": {
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "portfolio_id": {
+          "type": "string",
+          "description": "Portfolio UUID"
+        },
+        "currency": {
+          "type": "string",
+          "description": "Currency for balance denomination"
+        }
+      },
+      "required": [
+        "portfolio_id"
+      ]
+    },
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "outputSchema": null
+  },
+  "coinbase_products_list": {
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "product_type": {
+          "type": "string",
+          "description": "Product type filter",
+          "enum": [
+            "SPOT",
+            "FUTURE",
+            "EQUITY"
+          ],
+          "example": "SPOT"
+        },
+        "product_ids": {
+          "type": "string",
+          "description": "Comma-separated product IDs"
+        },
+        "symbol": {
+          "type": "string",
+          "description": "Filter products by symbol, matches base or quote side (e.g. USD, BTC). For a specific product use products_get (e.g. BTC-USD). Pagination ignored when set.",
+          "pattern": "^[A-Za-z0-9]+$"
+        },
+        "limit": {
+          "type": "integer",
+          "description": "Results per page"
+        },
+        "cursor": {
+          "type": "string",
+          "description": "Pagination cursor"
+        }
+      }
+    },
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "outputSchema": null
+  },
+  "coinbase_products_best_bid_ask": {
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "product_ids": {
+          "type": "array",
+          "description": "Product IDs (e.g. BTC-USD and ETH-USD). Omit to return all products."
+        }
+      }
+    },
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "outputSchema": null
+  },
+  "coinbase_products_get": {
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "product_id": {
+          "type": "string",
+          "description": "Product ID (e.g. BTC-USD)"
+        }
+      },
+      "required": [
+        "product_id"
+      ]
+    },
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "outputSchema": null
+  },
+  "coinbase_products_ticker": {
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "product_id": {
+          "type": "string",
+          "description": "Trading pair (e.g. BTC-USD)"
+        },
+        "limit": {
+          "type": "integer",
+          "description": "Number of trades. Defaults to 100."
+        }
+      },
+      "required": [
+        "product_id"
+      ]
+    },
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "outputSchema": null
+  },
+  "coinbase_products_book": {
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "product_id": {
+          "type": "string",
+          "description": "Product ID"
+        },
+        "limit": {
+          "type": "integer",
+          "description": "Number of levels"
+        }
+      },
+      "required": [
+        "product_id"
+      ]
+    },
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "outputSchema": null
+  },
+  "coinbase_products_candles": {
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "product_id": {
+          "type": "string",
+          "description": "Trading pair (e.g. BTC-USD)"
+        },
+        "start": {
+          "type": "string",
+          "description": "Start time (RFC 3339, e.g. 2024-01-01T00:00:00Z). Defaults to 60 candles before end.",
+          "format": "date-time"
+        },
+        "end": {
+          "type": "string",
+          "description": "End time (RFC 3339, e.g. 2024-01-01T00:00:00Z). Defaults to now.",
+          "format": "date-time"
+        },
+        "granularity": {
+          "type": "string",
+          "description": "Candle interval: 1m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 1d. Defaults to 1h.",
+          "enum": [
+            "1m",
+            "5m",
+            "15m",
+            "30m",
+            "1h",
+            "2h",
+            "4h",
+            "6h",
+            "1d"
+          ],
+          "default": "1h"
+        },
+        "limit": {
+          "type": "integer",
+          "description": "Max candles"
+        }
+      },
+      "required": [
+        "product_id"
+      ]
+    },
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "outputSchema": null
+  }
+}

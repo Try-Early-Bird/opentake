@@ -1,0 +1,75 @@
+@import "@fontsource-variable/rubik";
+@import "@fontsource-variable/inter";
+@import "./theme.css";
+
+/* App-wide font choice (see font.ts); Rubik is the default, Geist falls
+   through to the stack from theme.css. */
+:root[data-font="rubik"] {
+  font-family: "Rubik Variable", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+:root[data-font="inter"] {
+  font-family: "Inter Variable", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+/* Display text (portfolio title/value). Rubik renders visually heavier than
+   Inter/Geist, so it drops to 400 where the others use 500. */
+.font-display {
+  font-weight: 500;
+}
+:root[data-font="rubik"] .font-display {
+  font-weight: 400;
+}
+
+/* Shared list-row titles: regular weight in both themes. Keep hierarchy through
+   size, spacing and secondary text; reserve heavier weights for section headings. */
+.row-title {
+  font-weight: 400;
+}
+
+/* Rolling number reels (RollingNumber). */
+.rolling-reel {
+  transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
+  will-change: transform;
+}
+@media (prefers-reduced-motion: reduce) {
+  .rolling-reel {
+    transition: none;
+  }
+}
+
+/* The signed-out landing keeps the public splash page's own dark palette
+   (apps/investing styles.css) whatever the app theme is. */
+.splash {
+  --splash-bg: #0a0b0a;
+  --splash-panel: #0d0e0d;
+  --splash-surface: #151715;
+  --splash-border: #23261f;
+  --splash-text: #f4f5f0;
+  --splash-muted: #9ba098;
+  --splash-accent: #bde830;
+  --splash-accent-ink: #0a0b0a;
+  color-scheme: dark;
+  background: var(--splash-bg);
+  color: var(--splash-text);
+}
+
+/* The agent activity list loops; half the track is the duplicated copy. */
+@keyframes agent-activity-scroll {
+  from { transform: translateY(0); }
+  to { transform: translateY(-50%); }
+}
+
+/* Management dialogs provide the surface; their status cards need no second shell. */
+.venue-management [data-investment-card] {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.venue-management [data-investment-card] > :is(header, ol, dl, footer),
+.venue-management div[data-investment-card] {
+  padding-inline: 0;
+}
+.venue-management [data-investment-card] > footer {
+  background: transparent;
+}

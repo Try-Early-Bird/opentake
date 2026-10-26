@@ -1,0 +1,62 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
+import { mkdtemp } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { createServer } from 'vite';
+import react from '@vitejs/plugin-react';
+import tailwind from '@tailwindcss/vite';
+import { chromium } from 'playwright-core';
+
+const root=fileURLToPath(new URL('../../../',import.meta.url));
+const chrome=process.env.CHROME_PATH??(process.platform==='darwin'?'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome':'/usr/bin/chromium');
+const initial={metadata:{title:'Synthetic allocation',description:'A synthetic long-term portfolio.',rationale:'Diversification.',holdings:[{instrument:{venue:'robinhood',symbol:'VTI'},reason:'Broad exposure'}]},spec:{schemaVersion:1,kind:'basket',target:{weights:[{instrument:{venue:'robinhood',symbol:'VTI'},bps:7000},{instrument:{venue:'robinhood',symbol:'BND'},bps:2000}],cashBps:1000},rebalance:{schedule:'quarterly',driftBandPoints:5,driftBandRelative:null}},unsupportedRequests:['Synthetic unsupported condition']};
+
+test('manual strategy dialog validates steps, preserves inputs and saves only after review', {skip:!existsSync(chrome),timeout:60000},async()=>{
+ const entry='/__strategy_editor_test.jsx';
+ const code=`import React from 'react';import {createRoot} from 'react-dom/client';import {BasketEditor} from '/src/renderer/src/strategies/BasketEditor.tsx';import '/src/renderer/src/index.css';
+ function Fixture(){const [open,setOpen]=React.useState(true);const [busy,setBusy]=React.useState(false);window.setBusy=setBusy;return open?React.createElement(BasketEditor,{initial:${JSON.stringify(initial)},busy,onCancel:()=>setOpen(false),onSave:async value=>{window.saved=value;setOpen(false);}}):React.createElement('button',{onClick:()=>setOpen(true)},'Reopen');}createRoot(document.getElementById('root')).render(React.createElement(Fixture));`;
+ const server=await createServer({root,configFile:false,plugins:[react(),tailwind(),{name:'isolated-strategy-editor',resolveId(id){if(id===entry)return entry;},load(id){if(id===entry)return code;},configureServer(vite){vite.middlewares.use('/__strategy_editor_test',async(req,res,next)=>{if(req.url!=='/'&&req.url!==''){next();return;}try{res.setHeader('Content-Type','text/html');res.end(await vite.transformIndexHtml('/__strategy_editor_test',`<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"/></head><body><div id="root"></div><script type="module" src="${entry}"></script></body></html>`));}catch(e){next(e);}});}}],server:{host:'127.0.0.1',port:0},resolve:{dedupe:['react','react-dom']},logLevel:'error'});
+ let browser;
+ try{
+  await server.listen();const port=server.httpServer.address().port;
+  browser=await chromium.launch({headless:true,executablePath:chrome});
+  const page=await browser.newPage({viewport:{width:1200,height:900}});
+  const failures=[];page.on('pageerror',error=>failures.push(error.message));
+  await page.goto(`http://127.0.0.1:${port}/__strategy_editor_test`);
+  await page.getByRole('dialog').waitFor();
+  const shots=await mkdtemp(join(tmpdir(),'strategy-editor-'));
+  await page.screenshot({path:join(shots,'holdings.png')});
+  await page.getByLabel('VTI weight',{exact:true}).fill('60');
+  await page.getByRole('button',{name:'Rules',exact:true}).last().click();
+  assert.match(await page.getByRole('alert').innerText(),/100%/);
+  await page.getByLabel('VTI weight',{exact:true}).fill('70');
+  await page.getByRole('button',{name:'Rules',exact:true}).last().click();
+  await page.getByRole('combobox',{name:'Rebalance schedule'}).click();
+  await page.getByRole('option',{name:'Monthly',exact:true}).click();
+  await page.getByRole('button',{name:'Details',exact:true}).last().click();
+  await page.getByRole('textbox',{name:'Name',exact:true}).fill('Updated synthetic strategy');
+  await page.getByRole('textbox',{name:'Rationale',exact:true}).fill('Updated rationale');
+  await page.screenshot({path:join(shots,'details.png')});
+  await page.getByRole('button',{name:'Review',exact:true}).last().click();
+  assert.equal(await page.evaluate(()=>window.saved),undefined);
+  assert.match(await page.getByRole('dialog').innerText(),/Synthetic unsupported condition/);
+  await page.screenshot({path:join(shots,'review.png')});
+  await page.setViewportSize({width:390,height:844});
+  await page.screenshot({path:join(shots,'mobile.png')});
+  const box=await page.getByRole('dialog').boundingBox();assert.ok(box.x>=0&&box.x+box.width<=390);
+  await page.evaluate(()=>window.setBusy(true));
+  assert.equal(await page.getByRole('button',{name:'Saving…'}).isDisabled(),true);
+  await page.keyboard.press('Escape');assert.equal(await page.getByRole('dialog').count(),1);
+  await page.evaluate(()=>window.setBusy(false));
+  await page.getByRole('button',{name:'Save draft',exact:true}).click();
+  await page.getByRole('button',{name:'Reopen'}).waitFor();
+  const saved=await page.evaluate(()=>window.saved);
+  assert.equal(saved.metadata.title,'Updated synthetic strategy');assert.equal(saved.metadata.rationale,'Updated rationale');assert.equal(saved.spec.rebalance.schedule,'monthly');
+  assert.deepEqual(saved.spec.target,initial.spec.target);assert.deepEqual(saved.metadata.holdings,initial.metadata.holdings);assert.deepEqual(saved.unsupportedRequests,initial.unsupportedRequests);
+  await page.getByRole('button',{name:'Reopen'}).click();await page.getByRole('button',{name:'Cancel',exact:true}).click();await page.getByRole('button',{name:'Reopen'}).waitFor();
+  assert.deepEqual(failures,[]);console.log(`Strategy editor screenshots: ${shots}`);
+ }finally{await browser?.close();await server.close();}
+});

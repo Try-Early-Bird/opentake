@@ -1,0 +1,38 @@
+import {createServer} from 'vite';import react from '@vitejs/plugin-react';import tailwindcss from '@tailwindcss/vite';import {chromium} from 'playwright-core';import assert from 'node:assert/strict';import {mkdir} from 'node:fs/promises';
+const server=await createServer({configFile:false,plugins:[react(),tailwindcss()],server:{host:'127.0.0.1',port:0},resolve:{dedupe:['react','react-dom']}});let browser;
+try {
+ await mkdir('.local/designs/plan16d',{recursive:true});await server.listen();browser=await chromium.launch({headless:true,channel:'chrome'});
+ const page=await browser.newPage({viewport:{width:1360,height:1000},colorScheme:'light'});const errors=[];page.on('pageerror',error=>errors.push(error.message));
+ await page.route('**/*',route=>new URL(route.request().url()).hostname==='127.0.0.1'?route.continue():route.abort());
+ await page.goto(server.resolvedUrls.local[0]+'tests/fixtures/data-sources-ui/index.html');
+ await page.getByRole('button',{name:/Coinbase market data WebSocket/}).click();
+ const region=page.getByRole('region',{name:'Coinbase public WebSocket'});
+ await region.getByText('BTC-USD buy 0.0021 @ 83,489.56',{exact:true}).first().waitFor();
+ await region.getByText('Held in Opentake, Default',{exact:true}).waitFor();
+ await region.getByText('requested…',{exact:true}).waitFor();
+ assert.deepEqual(await page.evaluate(()=>window.__fixture.streamEvents),[]);
+ await page.screenshot({path:'.local/designs/plan16d/implemented-coinbase-stream.png'});
+ await region.getByRole('button',{name:'Trades',exact:true}).click();
+ assert.equal(await region.getByText('ok',{exact:true}).count(),0);
+ await region.getByRole('button',{name:'Heartbeats',exact:true}).click();
+ await region.getByText('ok',{exact:true}).first().waitFor();
+ assert.equal(await region.getByText('BTC-USD buy 0.0021 @ 83,489.56',{exact:true}).count(),0);
+ await region.getByRole('button',{name:'All',exact:true}).click();
+ await region.getByRole('button',{name:'Raw',exact:true}).click();
+ await region.getByText(/"channel":"market_trades"/).first().click();
+ await page.getByRole('dialog').getByText('Message payload',{exact:true}).waitFor();
+ await page.keyboard.press('Escape');
+ await region.getByRole('button',{name:'Summary',exact:true}).click();
+ await region.getByRole('button',{name:'Pause',exact:true}).click();
+ await region.getByRole('button',{name:'Clear',exact:true}).click();
+ assert.equal(await region.getByText('BTC-USD buy 0.0021 @ 83,489.56',{exact:true}).count(),0);
+ await page.evaluate(()=>window.__fixture.streamIssue='transport');
+ await region.getByText(/The public connection was interrupted/).waitFor();
+ await region.getByRole('button',{name:'Reconnect now'}).click();
+ await page.waitForFunction(()=>window.__fixture.streamIssue===null);
+ await page.getByRole('button',{name:/Robinhood Fixture account/}).click();
+ assert.equal(await page.getByRole('region',{name:'Coinbase public WebSocket'}).count(),0);
+ assert.deepEqual(await page.evaluate(()=>window.__fixture.streamEvents),[]);
+ assert.deepEqual(errors,[]);
+ console.log('Coinbase subscription inspector, account labels, tick ages, filters, summary/raw messages and pause/clear passed; viewing creates no demand.');
+} finally {await browser?.close();await server.close();}

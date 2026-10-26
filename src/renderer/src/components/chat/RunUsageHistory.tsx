@@ -1,0 +1,10 @@
+import { useEffect,useState } from 'react';
+import type { RunUsage } from '../../../../shared/chat-usage';
+import { UsageDetails } from './UsageDetails';
+import { providerLabels } from './AiPicker';
+export function RunUsageHistory({takeId}:{takeId:string}) {
+ const [items,setItems]=useState<RunUsage[]>([]),[next,setNext]=useState<string|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState('');
+ async function load(before?:string){setBusy(true);try{const result=await window.takes.usageHistory(takeId,before);setItems(old=>before?[...old,...result.items]:result.items);setNext(result.next);setError('');}catch{setError('Could not load usage. Try again.');}finally{setBusy(false);}}
+ useEffect(()=>{void load();},[takeId]);
+ return <section aria-label="Run usage" className="space-y-4"><button disabled={busy} className="text-sm underline" onClick={()=>void load()}>Refresh usage</button>{error&&<p role="alert">{error}</p>}{!busy&&!error&&!items.length&&<p>No responses yet.</p>}{items.map(item=><details key={item.id} className="space-y-3"><summary className="cursor-pointer text-sm">{(providerLabels as Record<string,string>)[item.selection.provider]??item.selection.provider} · {item.selection.model} · {item.state} · {new Date(item.startedAt).toLocaleString()}</summary><UsageDetails usage={item.usage}/>{item.selection.provider==='claude'&&<p className="text-xs">Claude cost budget: {item.budgets?.claudeCostUsd==null?'Not set':`$${item.budgets.claudeCostUsd.toFixed(2)} API-equivalent`}</p>}<p className="text-xs">Output-token threshold: {item.budgets?.outputTokens??'Not set'}</p>{(item.selection.provider==='opencode'||item.selection.provider==='openrouter')&&<p className="text-xs">OpenCode cost threshold: {item.budgets?.opencodeCostUsd==null?'Not set':`$${item.budgets.opencodeCostUsd.toFixed(2)}`}</p>}{item.error&&<p className="text-sm text-destructive">{item.error}</p>}</details>)}{next&&<button disabled={busy} className="text-sm underline" onClick={()=>void load(next)}>Older responses</button>}</section>;
+}

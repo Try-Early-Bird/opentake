@@ -1,0 +1,122 @@
+name: Desktop release draft
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      platforms:
+        description: Installer platforms to include (run against a version tag)
+        type: choice
+        default: macos
+        options: [macos, all]
+
+permissions:
+  contents: read
+concurrency:
+  group: desktop-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.release.outputs.matrix }}
+      platforms: ${{ steps.release.outputs.platforms }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Require a matching version tag
+        id: release
+        env:
+          RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+          RELEASE_PLATFORMS: ${{ inputs.platforms || vars.DESKTOP_RELEASE_PLATFORMS || 'macos' }}
+        run: node scripts/release.mjs
+  checks:
+    needs: validate
+    uses: ./.github/workflows/checks.yml
+    with:
+      platforms: ${{ needs.validate.outputs.platforms }}
+  build:
+    needs: [validate, checks]
+    environment: desktop-release
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.validate.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Build signed installers and updater files
+        shell: bash
+        env:
+          TARGET_PLATFORM: ${{ matrix.platform }}
+          TARGET_ARCH: ${{ matrix.arch }}
+          CSC_LINK: ${{ secrets[matrix.certificate] }}
+          CSC_KEY_PASSWORD: ${{ secrets[matrix.password] }}
+          APPLE_API_KEY_P8: ${{ matrix.platform == 'mac' && secrets.APPLE_API_KEY_P8 || '' }}
+          APPLE_API_KEY_ID: ${{ matrix.platform == 'mac' && secrets.APPLE_API_KEY_ID || '' }}
+          APPLE_API_ISSUER: ${{ matrix.platform == 'mac' && secrets.APPLE_API_ISSUER || '' }}
+        run: |
+          test -n "$CSC_LINK" || { echo 'Signing certificate is required'; exit 1; }
+          if [[ "$TARGET_PLATFORM" == "mac" ]]; then
+            test -n "$APPLE_API_KEY_P8" && test -n "$APPLE_API_KEY_ID" && test -n "$APPLE_API_ISSUER" || {
+              echo 'Apple Team API key, key ID, and issuer ID are required'; exit 1;
+            }
+            umask 077
+            APPLE_API_KEY=$(mktemp "$RUNNER_TEMP/opentake-notary.XXXXXX")
+            export APPLE_API_KEY
+            trap 'rm -f "$APPLE_API_KEY"' EXIT
+            printf '%s' "$APPLE_API_KEY_P8" > "$APPLE_API_KEY"
+            unset APPLE_API_KEY_P8
+          fi
+          npm run build:release -- --"$TARGET_PLATFORM" --"$TARGET_ARCH"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            dist/*.dmg
+            dist/*.zip
+            dist/*.exe
+            dist/*.blockmap
+            dist/latest*.yml
+            dist/alpha*.yml
+            dist/beta*.yml
+            dist/rc*.yml
+  draft:
+    needs: [validate, build]
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_PLATFORMS: ${{ needs.validate.outputs.platforms }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-input
+      - name: Validate checksums and merge Mac architecture metadata
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: node scripts/release.mjs assemble
+      - name: Create draft (never publish automatically)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: node scripts/release-draft.mjs

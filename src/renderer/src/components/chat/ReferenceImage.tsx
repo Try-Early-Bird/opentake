@@ -1,0 +1,9 @@
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../ui/dialog';
+import { useEffect,useState } from 'react';
+import type { ImageAttachment } from '../../../../shared/takes';
+export function ReferenceImage({image,onRemove}:{image:ImageAttachment;onRemove?:()=>void}) {
+ const [expanded,setExpanded]=useState(false);
+ const [src,setSrc]=useState('');const [failed,setFailed]=useState(false);
+ useEffect(()=>{let active=true;void window.takes.image(image.id).then(s=>{if(active)setSrc(s);}).catch(()=>{if(active)setFailed(true);});return()=>{active=false;};},[image.id]);
+ return <><figure className="flex max-w-full items-center gap-2.5 rounded-lg border border-border bg-muted/40 py-1.5 pl-1.5 pr-3 text-sm">{src?<button type="button" aria-label={`Preview ${image.name}`} onClick={()=>setExpanded(true)} className="shrink-0"><img src={src} alt={image.name} className="h-8 w-12 rounded object-cover"/></button>:<span className="grid h-8 w-12 shrink-0 place-items-center rounded bg-muted text-[9px] text-muted-foreground">{failed?'Unavailable':'Loading…'}</span>}<figcaption className="min-w-0"><span className="block max-w-48 truncate font-medium">{image.name}</span><span className="block text-[11px] text-muted-foreground">{image.width} × {image.height}</span></figcaption>{onRemove&&<button type="button" aria-label={`Remove ${image.name}`} onClick={onRemove} className="ml-1 text-muted-foreground hover:text-foreground">×</button>}</figure><Dialog open={expanded} onOpenChange={setExpanded}><DialogContent className="max-w-5xl"><DialogTitle>{image.name}</DialogTitle><DialogDescription>{image.width} × {image.height} · {Math.ceil(image.bytes/1024)} KB</DialogDescription><div className="max-h-[70vh] overflow-auto"><img src={src} alt={image.name} className="max-w-none" width={image.width} height={image.height}/></div></DialogContent></Dialog></>;
+}

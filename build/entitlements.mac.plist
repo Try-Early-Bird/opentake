@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <!-- V8 needs JIT under the hardened runtime. -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+    <!-- Deliberately no com.apple.security.cs.disable-library-validation: the signed app may load
+         only libraries signed by Apple or this team, so foreign native code cannot run inside it
+         (and reach its keychain item). Native modules in the bundle are signed when packaging. -->
+  </dict>
+</plist>
