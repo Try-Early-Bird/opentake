@@ -69,7 +69,8 @@ Build on the target OS. Signed release builds are described in
 | Command | What it runs |
 | --- | --- |
 | `npm run typecheck` | Type checks for the main process and the renderer |
-| `npm test` | Vitest unit and PGlite integration tests |
+| `npm run test:release` | The release suite: startup, migrations, credentials, backups, RPC and trading safety (under a minute) |
+| `npm test` | Every Vitest unit and PGlite integration test |
 | `npm run test:chat` | Chat and agent tests ([tests/chat](tests/chat/README.md)) |
 | `npm run test:connections` | Migrations, OAuth and account lifecycle |
 | `npm run test:host` | Background host queue and authenticated RPC |

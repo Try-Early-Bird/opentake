@@ -7,8 +7,13 @@ on:
         required: false
         type: string
         default: all
-  # Manual runs and release tags only. macOS alone is the quick check (about 10 minutes);
-  # choose `all` to add Linux and Windows, which take much longer.
+      scope:
+        description: quick (release suite) or full (every test)
+        required: false
+        type: string
+        default: quick
+  # Manual runs and release tags only. The quick scope runs the release suite (`npm run
+  # test:release`) and launch checks; `full` runs every test, and `all` adds Linux and Windows.
   workflow_dispatch:
     inputs:
       platforms:
@@ -16,6 +21,11 @@ on:
         type: choice
         default: macos
         options: [macos, all]
+      scope:
+        description: Tests to run
+        type: choice
+        default: quick
+        options: [quick, full]
 
 permissions:
   contents: read
@@ -33,7 +43,7 @@ jobs:
         os: ${{ fromJSON(inputs.platforms == 'macos' && '["macos-latest"]' || '["macos-latest","ubuntu-latest","windows-latest"]') }}
     runs-on: ${{ matrix.os }}
     # Linux and Windows runners' disk-backed tests take far longer than macOS.
-    timeout-minutes: ${{ matrix.os == 'windows-latest' && 75 || matrix.os == 'ubuntu-latest' && 60 || 35 }}
+    timeout-minutes: ${{ inputs.scope != 'full' && 25 || matrix.os == 'windows-latest' && 75 || matrix.os == 'ubuntu-latest' && 60 || 35 }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -51,16 +61,20 @@ jobs:
         if: runner.os == 'Linux'
         env:
           ELECTRON_DISABLE_SANDBOX: '1'
+      - run: npm run test:release
+        if: inputs.scope != 'full'
       - run: npm test
+        if: inputs.scope == 'full'
       - run: npm run test:recovery
-      - run: node --test --test-concurrency=1 tests/electron.test.mjs tests/shutdown.test.mjs tests/host.test.mjs tests/app-updates.test.mjs
+      - run: node --test --test-concurrency=1 ${{ inputs.scope == 'full' && 'tests/electron.test.mjs tests/shutdown.test.mjs tests/host.test.mjs tests/app-updates.test.mjs' || 'tests/electron.test.mjs' }}
         if: runner.os != 'Linux'
-      - run: xvfb-run -a node --test --test-concurrency=1 tests/electron.test.mjs tests/shutdown.test.mjs tests/host.test.mjs tests/app-updates.test.mjs
+      - run: xvfb-run -a node --test --test-concurrency=1 ${{ inputs.scope == 'full' && 'tests/electron.test.mjs tests/shutdown.test.mjs tests/host.test.mjs tests/app-updates.test.mjs' || 'tests/electron.test.mjs' }}
         if: runner.os == 'Linux'
         env:
           ELECTRON_DISABLE_SANDBOX: '1'
       # GitHub's runner images ship Chrome; installing Chromium with its Linux packages took 12 minutes.
       - name: Set chat test browser
+        if: inputs.scope == 'full'
         shell: bash
         run: |
           for candidate in "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" /usr/bin/google-chrome "C:/Program Files/Google/Chrome/Application/chrome.exe"; do
@@ -69,10 +83,10 @@ jobs:
           npx playwright-core install --with-deps chromium
           node -e "console.log('CHROME_PATH=' + require('playwright-core').chromium.executablePath())" >> "$GITHUB_ENV"
       - name: Chat and take integration tests
-        if: runner.os != 'Linux'
+        if: inputs.scope == 'full' && runner.os != 'Linux'
         run: node --test --test-concurrency=1 tests/chat/integration/*.test.mjs
       - name: Chat and take integration tests (Linux)
-        if: runner.os == 'Linux'
+        if: inputs.scope == 'full' && runner.os == 'Linux'
         run: xvfb-run -a node --test --test-concurrency=1 tests/chat/integration/*.test.mjs
         env:
           ELECTRON_DISABLE_SANDBOX: '1'

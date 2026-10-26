@@ -40,8 +40,8 @@ npm run dev  # runs the startup guard, then Electron with hot reload
 
 - Keep each pull request to one change, with a short description of what and why.
 - Include tests, and say which commands you ran.
-- Maintainers run the full checks (typechecks, unit and integration tests,
-  and Electron smoke tests on macOS, Windows and Linux) before merging.
+- Run `npm run test:release` plus the tests for what you changed. Maintainers
+  can run the full suite on every platform from the Actions tab before merging.
 
 ## Coding assistants
 

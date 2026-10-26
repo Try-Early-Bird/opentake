@@ -7,7 +7,7 @@ export default defineConfig({
     include: ['tests/unit/**/*.test.ts', 'tests/chat/unit/**/*.test.ts', 'tests/pglite.test.mjs'],
     testTimeout: 30_000,
     hookTimeout: 30_000,
-    // One worker per core; each test file uses its own disposable PGlite.
-    maxWorkers: Math.max(2, availableParallelism()),
+    // Every core locally; CI's small runners slow down past two.
+    maxWorkers: process.env.CI ? 2 : Math.max(2, availableParallelism()),
   },
 });

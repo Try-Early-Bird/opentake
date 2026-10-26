@@ -27,6 +27,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:unit": "vitest run tests/unit tests/chat/unit",
+    "test:release": "vitest run tests/unit/startup-guard.test.ts tests/unit/migration-lineage.test.ts tests/unit/tool-governance-startup.test.ts tests/unit/migrations.test.ts tests/unit/storage-security.test.ts tests/unit/import.test.ts tests/unit/temporary-files.test.ts tests/unit/host-rpc.test.ts tests/unit/tool-access.test.ts tests/chat/unit/platform-access.test.ts tests/chat/unit/run-budget.test.ts tests/chat/unit/mcp-management.test.ts tests/unit/prompt-injection.test.ts tests/unit/rule-agents.test.ts tests/unit/robinhood-rule-trades.test.ts tests/unit/robinhood-rule-e2e.test.ts tests/unit/robinhood-rule-conformance.test.ts tests/unit/rule-trade-approvals.test.ts tests/unit/rule-trades-hardening.test.ts tests/unit/rule-action-text.test.ts tests/unit/execution/planner.test.ts tests/unit/execution/limits.test.ts tests/unit/orders/take-market-order.test.ts tests/unit/orders/writer.test.ts tests/unit/allocations/tax-lots.test.ts",
     "test:connections": "vitest run tests/unit/migrations.test.ts tests/unit/connections.test.ts tests/unit/robinhood.test.ts",
     "test:connections:ui": "npm run build && node --test --test-name-pattern='Robinhood connection menu and migration history' tests/electron.test.mjs",
     "test:host": "vitest run tests/unit/host-rpc.test.ts tests/unit/maintenance.test.ts",
