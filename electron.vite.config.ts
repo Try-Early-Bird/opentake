@@ -17,7 +17,8 @@ const startupGuard = () => ({
         'tests/unit/startup-guard.test.ts',
         'tests/unit/migration-lineage.test.ts',
         'tests/unit/tool-governance-startup.test.ts',
-      ], { cwd: __dirname, timeout: 60000 });
+      // Slow CI runners (Intel macOS) need well over a minute for these three files.
+      ], { cwd: __dirname, timeout: 180000 });
       console.info(result.stdout);
     } catch (error) {
       const failure = error as {stdout?:string;stderr?:string};
