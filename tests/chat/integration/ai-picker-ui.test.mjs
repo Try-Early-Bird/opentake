@@ -40,7 +40,8 @@ test('consolidated AI picker handles selection, refresh errors, connections and 
     await slider.waitFor();
     assert.equal(await slider.getAttribute('aria-valuetext'), 'Default');
     await page.keyboard.press('End');
-    assert.equal(await slider.evaluate(el => el === document.activeElement), true);
+    // Focus moves to the slider on the next frame; slow CI runners need a moment.
+    await slider.evaluate(el => new Promise((resolve, reject) => { const deadline = performance.now() + 2000; const check = () => el === document.activeElement ? resolve() : performance.now() > deadline ? reject(new Error('slider never focused')) : requestAnimationFrame(check); check(); }));
     await page.keyboard.press('ArrowRight');
     assert.equal(await slider.getAttribute('aria-valuetext'), 'Low');
     const sliderBounds = await slider.boundingBox();
