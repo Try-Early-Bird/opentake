@@ -4,7 +4,9 @@ const { identity: _unsignedIdentity, ...mac } = build.mac;
 module.exports = {
   ...build,
   // Without the default disable-library-validation entitlement (see build/entitlements.mac.plist).
-  mac: { ...mac, hardenedRuntime: true, entitlements: 'build/entitlements.mac.plist', entitlementsInherit: 'build/entitlements.mac.plist' },
+  // notarize: false hands notarization to scripts/notarize.cjs (afterSign), which retries stapling.
+  mac: { ...mac, hardenedRuntime: true, entitlements: 'build/entitlements.mac.plist', entitlementsInherit: 'build/entitlements.mac.plist', notarize: false },
+  afterSign: 'scripts/notarize.cjs',
   // Fuses close ways to run code as the signed app. RunAsNode stays on: AI CLIs, the MCP bridge and
   // the Coinbase CLI run under this binary in Node mode. CI's unpacked builds keep the defaults so
   // Playwright can attach (--inspect, --remote-debugging-port).
