@@ -1,14 +1,18 @@
 # Opentake
 
-Opentake is a self-hosted desktop app for investing ideas. You describe a belief
-("US manufacturing is coming home") to an AI model you bring yourself, turn it into
-a **Take**, a basket of holdings with target weights, and then invest in it from
-your own brokerage account. Rules can watch data sources and rebalance, invest cash
-or reduce a Take, asking you first unless you allow otherwise.
+**Turn an investing idea into a portfolio you own, with the AI you already use.**
 
-Everything runs on your computer: the database, your credentials, the background
-service that watches rules, and the AI agents' tool access. There is no Opentake
-server and no telemetry.
+Opentake is a free, open-source desktop app. Describe a belief ("AI is leaving the data
+centre for robots and cars") to Claude, ChatGPT or another model you bring yourself.
+It researches the idea with you and proposes a **Take**: a basket of holdings with
+target weights. Invest in it from your own Robinhood or Coinbase account, then let
+rules watch the markets and rebalance, invest cash or trim, asking you first.
+
+Everything runs on your computer: the database, your credentials, the service that
+watches your rules, and the AI agents' tool access. There is no Opentake server and
+no telemetry.
+
+![A Take in Opentake: holdings, weights and a year of performance](docs/images/take.png)
 
 > **Opentake can place real orders in your brokerage account.** It is pre-1.0
 > software provided under the MIT License, **without warranty of any kind**.
@@ -16,36 +20,68 @@ server and no telemetry.
 > Review what rules and agents are allowed to do, start with small amounts, and
 > use it at your own risk.
 
+## Supported venues
+
+| Venue | Connect with | Assets | What Opentake can do |
+| --- | --- | --- | --- |
+| **Robinhood** | Your [Robinhood Agentic](https://robinhood.com) account, signed in through Robinhood in your browser | US stocks and ETFs, crypto | Sync positions and history, research equities, invest in Takes, rebalance, deposit and withdraw, rule trades |
+| **Coinbase** | Your own Coinbase Developer Platform API key (Advanced Trade) | Crypto spot (USD and USDC pairs) | Sync portfolios, live prices, invest in Takes, rebalance, deposit and withdraw, rule trades |
+
+A single Take can hold assets on both venues. Credentials stay in your operating
+system's encrypted store and are never sent anywhere except the venue itself.
+
+## Bring your own AI
+
+| Provider | How it runs |
+| --- | --- |
+| Claude | [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI, signed in from Opentake |
+| ChatGPT | [Codex](https://github.com/openai/codex) CLI, signed in from Opentake |
+| Grok | Grok CLI (macOS) |
+| OpenCode Zen, OpenRouter | [OpenCode](https://opencode.ai) with your API key |
+| Local models | Ollama, LM Studio, vLLM or any OpenAI-compatible server on your machine |
+
+Agents only get Opentake's own tools, plus MCP servers you add and allow. They
+cannot run shell commands, and every tool call is recorded.
+
+## Screenshots
+
+| Start from a belief | Your portfolio |
+| --- | --- |
+| ![Home screen with starter ideas and the AI composer](docs/images/home.png) | ![Portfolio with account value over the day](docs/images/portfolio.png) |
+
+![Reviewing a rule change: the agent may rebalance up to $50 per trade, after you approve](docs/images/rules.png)
+
+*Rule changes proposed by the AI are shown as a diff, including any new trading
+permission, and nothing changes until you accept.*
+
+Screenshots use demo data, not a real account. Regenerate them with
+`npm run build && node scripts/readme-screenshots.mjs`.
+
 ## Features
 
-- **Brokerages:** Robinhood (equities and crypto) and Coinbase, with
-  read-only account sync and order placement through each venue's own API.
-- **Bring your own AI:** Claude (Claude Code), ChatGPT (Codex CLI), Grok,
-  OpenCode Zen, OpenRouter, or a local model (Ollama, LM Studio, vLLM or any
-  OpenAI-compatible server).
 - **Takes:** research a thesis with the AI, review its proposed holdings and
   weights, commit a version and invest. Rebalancing, deposits and withdrawals
   are planned locally with exact decimal math and tax-lot attribution.
-- **Rules:** watch custom HTTP data sources or live Coinbase prices, then notify
-  you, ask an agent to assess, or trade within limits you accept.
-- **Guardrails:** trades need your approval unless you allow otherwise, agents
-  have per-trade dollar ceilings and only the tools you allow, and content from
-  sources and third-party tools is treated as untrusted data.
+- **Rules:** watch custom HTTP or WebSocket data sources and live Coinbase prices,
+  then notify you, ask an agent to assess, or trade within limits you accept.
+- **Guardrails:** trades wait for your approval unless you allow otherwise, agent
+  rules have per-trade dollar ceilings, approved trades are re-checked before they
+  are placed, and content from sources and third-party tools is treated as
+  untrusted data.
+- **Updates:** signed releases update in place; the app shows a banner when a new
+  version is out.
 - **MCP bridge:** expose your local account reads to other MCP clients
   ([tools/earlybird-opentake-mcp](tools/earlybird-opentake-mcp/README.md)).
 
 ## Install
 
-Download the latest installer from
-[Releases](https://github.com/Try-Early-Bird/opentake-releases/releases).
-macOS 13 or later (Apple silicon or Intel) is supported; Windows and Linux
-builds are available from source.
+Download the latest DMG from
+[Releases](https://github.com/Try-Early-Bird/opentake-releases/releases)
+(macOS 13 or later, Apple silicon or Intel), open it and drag Opentake to
+Applications. Windows and Linux builds are available from source.
 
-AI providers run through their own CLIs, which you install and update yourself:
-[Claude Code](https://docs.anthropic.com/en/docs/claude-code),
-[Codex](https://github.com/openai/codex) or [OpenCode](https://opencode.ai).
-Opentake never imports your existing CLI logins; each sign-in is stored in
-Opentake's own encrypted store.
+Install the CLI for the AI you want to use (see the table above); Opentake
+signs it in separately and never imports your existing CLI logins.
 
 ## Build from source
 
