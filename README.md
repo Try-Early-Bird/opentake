@@ -1,12 +1,14 @@
 # Opentake
 
-**Turn an investing idea into a portfolio you own, with the AI you already use.**
+**Every portfolio starts with a belief. Say yours, and get a Take.**
 
-Opentake is a free, open-source desktop app. Describe a belief ("AI is leaving the data
-centre for robots and cars") to Claude, ChatGPT or another model you bring yourself.
-It researches the idea with you and proposes a **Take**: a basket of holdings with
-target weights. Invest in it from your own Robinhood or Coinbase account, then let
-rules watch the markets and rebalance, invest cash or trim, asking you first.
+You believe something about the world: AI is leaving the data centre for robots and
+cars, manufacturing is coming home, nuclear will power the next decade. Opentake
+turns that belief into a **Take**. Your AI (Claude, ChatGPT or another model you bring)
+researches the companies, trends and risks with you, then proposes a basket of
+holdings and weights. You refine it in conversation, commit it, and invest from your
+own Robinhood or Coinbase account. Rules can then watch the markets and rebalance,
+invest cash or trim, asking you first.
 
 Everything runs on your computer: the database, your credentials, the service that
 watches your rules, and the AI agents' tool access. There is no Opentake server and
