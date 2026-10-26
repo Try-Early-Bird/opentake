@@ -7,10 +7,8 @@ on:
         required: false
         type: string
         default: all
+  # Manual runs and release tags only: the full matrix takes up to an hour.
   workflow_dispatch:
-  pull_request:
-  push:
-    branches: [main]
 
 permissions:
   contents: read
