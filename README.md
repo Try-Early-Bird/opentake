@@ -12,7 +12,7 @@ Everything runs on your computer: the database, your credentials, the service th
 watches your rules, and the AI agents' tool access. There is no Opentake server and
 no telemetry.
 
-![A Take in Opentake: holdings, weights and a year of performance](docs/images/take.png)
+![Building a Take with Claude: the AI researches the idea and proposes holdings and weights](docs/images/take-chat.png)
 
 > **Opentake can place real orders in your brokerage account.** It is pre-1.0
 > software provided under the MIT License, **without warranty of any kind**.
@@ -43,16 +43,11 @@ system's encrypted store and are never sent anywhere except the venue itself.
 Agents only get Opentake's own tools, plus MCP servers you add and allow. They
 cannot run shell commands, and every tool call is recorded.
 
-## Screenshots
+## Track your Take
 
-| Start from a belief | Your portfolio |
-| --- | --- |
-| ![Home screen with starter ideas and the AI composer](docs/images/home.png) | ![Portfolio with account value over the day](docs/images/portfolio.png) |
+Once you invest, each Take shows its performance, holdings and where it lives.
 
-![Reviewing a rule change: the agent may rebalance up to $50 per trade, after you approve](docs/images/rules.png)
-
-*Rule changes proposed by the AI are shown as a diff, including any new trading
-permission, and nothing changes until you accept.*
+![A Take's page: a year of performance, holdings and value](docs/images/take.png)
 
 Screenshots use demo data, not a real account. Regenerate them with
 `npm run build && node scripts/readme-screenshots.mjs`.

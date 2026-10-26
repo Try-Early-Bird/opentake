@@ -18,12 +18,12 @@ const app = await electron.launch({ executablePath, args: ['.', `--user-data-dir
 try {
   const page = await app.firstWindow();
   page.setDefaultTimeout(15000);
+  page.on('pageerror', error => console.error('page error:', error.message));
+  page.on('console', message => { if (message.type() === 'error') console.error('console error:', message.text().slice(0, 1500)); });
   await page.setViewportSize({ width: 1440, height: 900 });
   await dismissConnectionPrompt(page, app);
   await page.waitForFunction(async () => { try { return !!(await window.activity.hostStatus()).pid; } catch { return false; } });
   await page.evaluate(() => document.documentElement.classList.add('dark'));
-  await page.waitForTimeout(500);
-  await page.screenshot({ path: join(out, 'home.png') });
 
   await app.evaluate(({ ipcMain }) => {
     // Deterministic smooth series: a gentle trend with small waves.
@@ -57,8 +57,13 @@ try {
       orders: [], executions: [{ providerExecutionRef: 'demo-1', orderRef: 'demo-order-1', symbol: 'NVDA', side: 'buy', quantity: takePositions[0].quantity, price: '181.20', occurredAt: iso(now - 2 * day), assetClass: 'equity' }], gaps: [] }));
     const summary = { strategyId, targetTakeId: takeId, title: metadata.title, status: 'committed', dirty: false, archivedAt: null };
     replace('strategies:list', (_e, archived) => archived ? [] : [summary]);
-    replace('strategies:read', () => ({ strategyId, targetTakeId: takeId, title: metadata.title, archivedAt: null, currentVersion: 'v1', clean: true, historyTruncated: false, proposals: [],
-      draft: { metadata, spec, unsupportedRequests: [] }, versions: [{ id: 'v1', sequence: 1, proposalId: 'p1', createdAt: iso(now - 200 * day), acceptedBy: 'local', payload: { metadata, spec, unsupportedRequests: [] } }] }));
+    const verification = { policy: 'personal_basket', version: 1, checkedAt: iso(now - 5 * 60000), accountRef: account.id,
+      results: take.map(([symbol]) => ({ instrument: { venue: 'robinhood', symbol }, state: 'pass', tradable: true, fractional: true, reason: '' })) };
+    const payload = { metadata, spec, unsupportedRequests: [] };
+    const draft = { id: 'p1', strategyId, revision: 1, baseVersion: null, sourceTakeId: takeId, sourceMessageId: 'a1', sourceRunId: null, producer: 'agent', producerIdentity: {},
+      previousRevision: null, copiedFrom: null, verification, createdAt: iso(now - 5 * 60000), acceptedVersion: 'v1', ...payload };
+    replace('strategies:read', () => ({ strategyId, targetTakeId: takeId, title: metadata.title, archivedAt: null, currentVersion: 'v1', clean: true, historyTruncated: false, proposals: [draft],
+      draft, versions: [{ id: 'v1', sequence: 1, proposalId: 'p1', payload, verification, createdAt: iso(now - 200 * day), acceptedBy: 'local' }] }));
     replace('strategies:performance', (_e, id, range, basis) => ({ strategyId: id, range, basis: 'model', actualAvailable: false, investors: 1, actualSince: null, intraday: null, rebalance: spec.rebalance, lastRebalancedAt: iso(now - 12 * day), dividends: 'excluded', stats: [],
       points: walk(250, 100, 0.34, 0.02, 3).map((v, i) => ({ day: iso(now - (249 - i) * day).slice(0, 10), unitValue: v.toFixed(2), source: i < 200 ? 'backtested' : 'live' })) }));
     replace('strategies:markers', () => []);
@@ -70,6 +75,38 @@ try {
     replace('strategies:account-plan', (_e, id) => ({ takeId: id, strategyId, draftRevision: 'v1', title: metadata.title, revision: 'r1', editable: true, reason: null,
       accounts: [{ id: account.id, venue: 'robinhood', label: 'Individual', available: true, selected: true, disabledReason: null, otherTakeCount: 0, balances: [{ asset: 'USD', amount: cash.toFixed(2) }] }],
       routes: [{ venue: 'robinhood', accountId: account.id, assets: take.map(([symbol, bps]) => ({ symbol, bps })) }] }));
+    // The Take's chat: a finished conversation in which Claude researched the idea and proposed the basket.
+    const selection = { provider: 'claude', model: 'opus' }, at = minutes => iso(now - minutes * 60000);
+    const question = 'I think AI is leaving the data centre: robots, self-driving cars and automated factories. Help me build a take around that, about $10k, nothing too speculative.';
+    const answer = [
+      'Here is a take built around **physical AI**: companies whose products put AI into machines that move.',
+      '',
+      '| Holding | Weight | Why it fits |',
+      '| --- | --- | --- |',
+      '| **NVDA** NVIDIA | 30% | Training and on-device compute for robots and cars (Jetson, Drive) |',
+      '| **TSLA** Tesla | 20% | Largest fleet collecting driving data; Optimus humanoid programme |',
+      '| **ISRG** Intuitive Surgical | 20% | Over 9,000 surgical robots installed, recurring instrument revenue |',
+      '| **ROK** Rockwell Automation | 15% | Factory automation and controls, a steadier industrial anchor |',
+      '| **SYM** Symbotic | 15% | Warehouse robotics for large retailers; the most volatile holding |',
+      '',
+      'I kept it to five names you can hold through a cycle. NVDA is the biggest weight because almost every robot in the list runs on its chips. SYM is the speculative edge, so it is capped at 15%.',
+      '',
+      '**Risks:** the basket leans on one theme and two mega-caps, so expect larger swings than an index fund. Robotaxi and humanoid timelines have slipped before.',
+      '',
+      'I have proposed this as **Physical AI**, rebalanced monthly. Review the weights on the right and commit when you are happy; nothing is invested until you choose to.',
+    ].join('\n');
+    const takeChat = { id: takeId, title: metadata.title, headId: 'a1', draft: '', draftImages: [], archivedAt: null, selection, running: false, messages: [
+      { id: 'u1', parentId: null, role: 'user', text: question, images: [], tools: [], createdAt: at(6), selection, state: 'completed' },
+      { id: 'a1', parentId: 'u1', role: 'assistant', text: answer, images: [], createdAt: at(5), selection, state: 'completed',
+        tools: [{ id: 't1', name: 'robinhood_get_equity_quotes', state: 'completed', startedAt: at(5) }, { id: 't2', name: 'robinhood_get_fundamentals', state: 'completed', startedAt: at(5) }, { id: 't3', name: 'opentake_propose_strategy', state: 'completed', startedAt: at(5) }] }] };
+    replace('takes:snapshot', (_e, id) => ({ revision: 'readme', takes: [takeChat], take: id === takeId ? takeChat : null, running: false }));
+    replace('ai:status', () => [{ provider: 'claude', status: 'connected' }]);
+    replace('chat:models', () => ({ ok: true, source: 'runtime', models: [{ value: 'opus', label: 'Claude Opus 5.5', imageInput: true }] }));
+    replace('strategies:message-proposals', () => []);
+    // The Take's rules panel: none yet (other data-source requests are not shown in these screens).
+    replace('dataSources:configure', (_e, request) => request?.action === 'rule-review'
+      ? { takeId, revision: 0, version: 'v1', inputRevision: 0, config: { schemaVersion: 1, rules: [] }, inputs: { inputs: [], maxSkewMs: 5000 }, proposals: [], stale: false, execution: 'notifications_and_trading' }
+      : []);
     replace('portfolio:strategy-history', (_e, id, range) => ({ allocationId: id, range, points: walk(60, takeValue * 0.82, 0.22, 0.015, 5).map((v, i) => ({ day: iso(now - (59 - i) * day).slice(0, 10), totalValue: v.toFixed(2) })) }));
   });
 
@@ -77,14 +114,23 @@ try {
   await page.getByRole('heading', { name: 'Individual', exact: true }).waitFor();
   await page.mouse.move(1430, 890);
   await page.waitForTimeout(1200);
-  await page.screenshot({ path: join(out, 'portfolio.png') });
 
   await page.getByRole('button').filter({ hasText: 'Physical AI' }).first().click();
   await page.getByRole('heading', { name: 'Physical AI', exact: true }).waitFor();
   await page.mouse.move(1430, 890);
   await page.waitForTimeout(1500);
   await page.screenshot({ path: join(out, 'take.png') });
-  console.log(`Saved home.png, portfolio.png and take.png to ${out}/`);
+
+  await page.getByRole('button', { name: 'Edit take', exact: true }).click();
+  await page.getByText('physical AI', { exact: false }).first().waitFor();
+  // Taller, and scrolled to the top, so the question shows above the answer.
+  await page.setViewportSize({ width: 1440, height: 1080 });
+  await page.getByText('I think AI is leaving the data centre', { exact: false }).first().scrollIntoViewIfNeeded();
+  await page.evaluate(() => { for (const el of document.querySelectorAll('*')) if (el.scrollHeight > el.clientHeight + 20 && getComputedStyle(el).overflowY !== 'visible') el.scrollTop = 0; });
+  await page.mouse.move(1430, 1070);
+  await page.waitForTimeout(1500);
+  await page.screenshot({ path: join(out, 'take-chat.png') });
+  console.log(`Saved take-chat.png and take.png to ${out}/`);
 } finally {
   await closeDesktop(app).catch(() => app.close());
   await stopHost(profile).catch(() => {});
