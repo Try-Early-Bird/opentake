@@ -2,7 +2,13 @@ import {CoinbaseRebalanceCashError} from '../../src/main/coinbase/rebalance-warn
 import {syncCapitalNotifications} from '../../src/main/trading/capital-notifications';
 import {createStrategyPerformance} from '../../src/main/strategies/performance';
 import {createCoinbaseTakePerformance} from '../../src/main/coinbase/take-performance';
-import {afterEach,expect,test,vi} from 'vitest';
+import {afterEach,expect,test as vitestTest,vi} from 'vitest';
+// Rerun through the shared action core (coinbase-rule-trades-core.test.ts), only the rule-trade
+// tests differ, so the rest are skipped there instead of running twice.
+const test:typeof vitestTest=(globalThis as {ruleTradesViaCore?:boolean}).ruleTradesViaCore
+ ?new Proxy(((name:string,fn?:unknown,...rest:unknown[])=>(String(fn).includes('ruleTradeFixture')?vitestTest:vitestTest.skip)(name,fn as never,...rest as [])) as typeof vitestTest,
+  {get:(_,key)=>{const value=Reflect.get(vitestTest,key);return typeof value==='function'?value.bind(vitestTest):value;}})
+ :vitestTest;
 import {createHash,randomUUID} from 'node:crypto';
 import {PGlite} from '@electric-sql/pglite';
 import {migrate,prepareRestoredDatabase} from '../../src/main/migrations';

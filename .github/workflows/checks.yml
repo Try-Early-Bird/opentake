@@ -7,8 +7,15 @@ on:
         required: false
         type: string
         default: all
-  # Manual runs and release tags only: the full matrix takes up to an hour.
+  # Manual runs and release tags only. macOS alone is the quick check (about 10 minutes);
+  # choose `all` to add Linux and Windows, which take much longer.
   workflow_dispatch:
+    inputs:
+      platforms:
+        description: Platforms to check
+        type: choice
+        default: macos
+        options: [macos, all]
 
 permissions:
   contents: read
@@ -25,7 +32,7 @@ jobs:
       matrix:
         os: ${{ fromJSON(inputs.platforms == 'macos' && '["macos-latest"]' || '["macos-latest","ubuntu-latest","windows-latest"]') }}
     runs-on: ${{ matrix.os }}
-    # macOS finishes in about 25 minutes; the Linux and Windows runners' disk-backed tests take far longer.
+    # Linux and Windows runners' disk-backed tests take far longer than macOS.
     timeout-minutes: ${{ matrix.os == 'windows-latest' && 75 || matrix.os == 'ubuntu-latest' && 60 || 35 }}
     steps:
       - uses: actions/checkout@v4
@@ -52,11 +59,15 @@ jobs:
         if: runner.os == 'Linux'
         env:
           ELECTRON_DISABLE_SANDBOX: '1'
-      - name: Install browser for chat UI tests
-        run: npx playwright-core install --with-deps chromium
+      # GitHub's runner images ship Chrome; installing Chromium with its Linux packages took 12 minutes.
       - name: Set chat test browser
         shell: bash
-        run: node -e "console.log('CHROME_PATH=' + require('playwright-core').chromium.executablePath())" >> "$GITHUB_ENV"
+        run: |
+          for candidate in "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" /usr/bin/google-chrome "C:/Program Files/Google/Chrome/Application/chrome.exe"; do
+            if [ -x "$candidate" ] || [ -f "$candidate" ]; then echo "CHROME_PATH=$candidate" >> "$GITHUB_ENV"; exit 0; fi
+          done
+          npx playwright-core install --with-deps chromium
+          node -e "console.log('CHROME_PATH=' + require('playwright-core').chromium.executablePath())" >> "$GITHUB_ENV"
       - name: Chat and take integration tests
         if: runner.os != 'Linux'
         run: node --test --test-concurrency=1 tests/chat/integration/*.test.mjs
