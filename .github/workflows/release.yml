@@ -35,13 +35,10 @@ jobs:
           RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
           RELEASE_PLATFORMS: ${{ inputs.platforms || vars.DESKTOP_RELEASE_PLATFORMS || 'macos' }}
         run: node scripts/release.mjs
-  checks:
-    needs: validate
-    uses: ./.github/workflows/checks.yml
-    with:
-      platforms: ${{ needs.validate.outputs.platforms }}
+  # Tests are not run here, to save CI minutes: run Desktop checks from the Actions tab
+  # (or `npm run test:release` locally) before tagging.
   build:
-    needs: [validate, checks]
+    needs: [validate]
     environment: desktop-release
     strategy:
       fail-fast: false

@@ -17,9 +17,11 @@ Preview channels are `alpha`, `beta` and `rc`. Never move a published tag.
 
 ## Release drafts
 
+The release workflow does not run tests. Before tagging, run `npm run test:release`
+locally, or **Desktop checks** from the Actions tab.
+
 Pushing a `v*` tag runs `.github/workflows/release.yml`. It rejects versions
-that disagree with either lockfile version, runs the quick checks (build, launch,
-packaged app and `npm run test:release`), builds signed
+that disagree with either lockfile version, builds signed
 installers and creates an **unpublished draft** in this repository with the
 installers, blockmaps, merged update YAML and `SHA256SUMS`. It never publishes
 and never overwrites an existing release; delete an incomplete draft by hand
