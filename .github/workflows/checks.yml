@@ -27,8 +27,8 @@ jobs:
       matrix:
         os: ${{ fromJSON(inputs.platforms == 'macos' && '["macos-latest"]' || '["macos-latest","ubuntu-latest","windows-latest"]') }}
     runs-on: ${{ matrix.os }}
-    # Windows disk-backed tests plus packaged-app verification exceed 30 minutes.
-    timeout-minutes: ${{ matrix.os == 'windows-latest' && 45 || 30 }}
+    # macOS finishes in about 25 minutes; the Linux and Windows runners' disk-backed tests take far longer.
+    timeout-minutes: ${{ matrix.os == 'windows-latest' && 75 || matrix.os == 'ubuntu-latest' && 60 || 35 }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
