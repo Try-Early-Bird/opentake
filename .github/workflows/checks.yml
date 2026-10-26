@@ -66,8 +66,9 @@ jobs:
       - run: npm test
         if: inputs.scope == 'full'
       - run: npm run test:recovery
-      - run: node --test --test-concurrency=1 ${{ inputs.scope == 'full' && 'tests/electron.test.mjs tests/shutdown.test.mjs tests/host.test.mjs tests/app-updates.test.mjs' || 'tests/electron.test.mjs' }}
-        if: runner.os != 'Linux'
+      # Quick runs on macOS and Windows test only the packaged app below, which runs the same file.
+      - run: node --test --test-concurrency=1 tests/electron.test.mjs tests/shutdown.test.mjs tests/host.test.mjs tests/app-updates.test.mjs
+        if: inputs.scope == 'full' && runner.os != 'Linux'
       - run: xvfb-run -a node --test --test-concurrency=1 ${{ inputs.scope == 'full' && 'tests/electron.test.mjs tests/shutdown.test.mjs tests/host.test.mjs tests/app-updates.test.mjs' || 'tests/electron.test.mjs' }}
         if: runner.os == 'Linux'
         env:
