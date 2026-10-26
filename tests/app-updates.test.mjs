@@ -50,6 +50,12 @@ test('Settings shows the version and checks releases only on request', { timeout
     await section.getByRole('checkbox', { name: 'Include preview releases' }).check();
     await section.getByRole('button', { name: 'Check for updates', exact: true }).click();
     await section.getByRole('button', { name: 'Download 99.0.0-beta.1' }).waitFor();
+    // The app-wide banner offers the update; this development build opens the release page.
+    const banner = page.getByRole('region', { name: 'App update' });
+    await banner.getByText('Opentake 99.0.0-beta.1 is available.').waitFor();
+    await banner.getByRole('button', { name: 'Download', exact: true }).waitFor();
+    await banner.getByRole('button', { name: 'Later', exact: true }).click();
+    assert.equal(await banner.count(), 0);
     await page.getByRole('button', { name: 'Version 99.0.0-beta.1 available', exact: true }).waitFor();
     await page.getByRole('button', { name: 'Dismiss update notice' }).click();
     assert.equal(await page.getByRole('button', { name: 'Version 99.0.0-beta.1 available', exact: true }).count(), 0);

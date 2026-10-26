@@ -7,6 +7,7 @@ import { ArchiveDecisionPrompt } from './components/ArchiveDecisionPrompt';
 import { Link, Outlet, useRouterState } from '@tanstack/react-router';
 import { EarlybirdMark } from './logos';
 import { StatusBar } from './components/StatusBar';
+import { UpdateBanner } from './components/UpdateBanner';
 import { ShortcutProvider } from './shortcuts/Shortcuts';
 
 export function AppShell(): React.JSX.Element {
@@ -30,6 +31,7 @@ export function AppShell(): React.JSX.Element {
         <nav aria-label="Main navigation" className="flex gap-1 text-sm"><Link to="/portfolio" aria-current={pathname === "/portfolio" ? "page" : undefined} className="rounded-md px-3 py-1.5 text-muted-foreground aria-[current=page]:bg-muted aria-[current=page]:text-foreground">Portfolio</Link><Link to="/takes" aria-current={pathname === "/takes" || pathname.startsWith("/strategies/") ? "page" : undefined} className="rounded-md px-3 py-1.5 text-muted-foreground aria-[current=page]:bg-muted aria-[current=page]:text-foreground">Takes</Link></nav></div>
         <div className="flex items-center gap-1"><SearchButton /><NotificationCenter /></div>
       </header>
+      <UpdateBanner />
       <main aria-label={pathname === '/data-sources' ? 'Data sources' : marketPage ? 'Asset' : onSettings ? 'Settings' : pathname === '/job-history' ? 'Job History' : pathname === '/activity' ? 'Activity' : pathname === '/portfolio' ? 'Portfolio' : pathname === '/takes' ? 'Takes' : pathname.startsWith('/strategies/') ? 'Take' : (pathname.startsWith('/rh/') || pathname.startsWith('/markets/')) ? 'Market' : 'Home'} className={onSettings || padded ? "w-full px-4 pt-6 pb-14 sm:px-6 md:pt-8 lg:px-8" : "w-full"}>
         <Outlet />
       </main>
