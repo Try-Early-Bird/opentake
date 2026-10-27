@@ -15,3 +15,6 @@ coverage/
 *.db
 *.db-*
 *.sqlite*
+
+# Local planning drafts
+plans/
