@@ -5,7 +5,23 @@ For maintainers. Everyday development needs none of this.
 ## Versions
 
 `package.json` is the version source. Update it and the lockfile together, then
-tag the commit with the matching version:
+tag the commit with the matching version.
+
+For the next beta (`0.2.0-beta.3` → `0.2.0-beta.4`), bump in a pull request and
+tag after it merges:
+
+```sh
+npm run release:bump            # next beta number in package.json and the lockfile
+git commit -am "Release 0.2.0-beta.4"
+# merge the pull request, then on an up-to-date main:
+npm run release:tag             # tags v<package.json version> and pushes the tag
+```
+
+`release:tag` refuses unless you are on `main` matching `origin/main` with a
+clean tree, the lockfile agrees, and the tag does not exist yet. Tag `main`, not
+a pull request branch: squash merges leave a branch commit off `main`.
+
+For any other version, set it explicitly:
 
 ```sh
 npm version 0.3.0-beta.1 --no-git-tag-version
