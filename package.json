@@ -1,6 +1,6 @@
 {
   "name": "opentake",
-  "version": "0.2.0-beta.4",
+  "version": "0.2.0",
   "description": "Opentake: a self-hosted desktop app for turning investing ideas into rules and trades on your own brokerage accounts",
   "main": "./out/main/index.js",
   "author": "Earlybird <founders@joinearlybird.com>",
