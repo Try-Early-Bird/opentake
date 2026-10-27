@@ -18,3 +18,6 @@ coverage/
 
 # Local planning drafts
 plans/
+
+# Per-developer Claude Code settings; a shared .claude/settings.json can still be committed
+.claude/settings.local.json
