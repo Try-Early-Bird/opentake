@@ -7,6 +7,17 @@ export interface ModeConfig {
  tools: string[] | null;
 }
 export const emptyModeConfig: ModeConfig = { description:'', guidance:'', details:'', completion:'', tools:null };
+/** The conversation fields Opentake ships a default for on General. */
+export type ModeFlow = Pick<ModeConfig,'guidance'|'details'|'completion'>;
+const flowFields = ['guidance','details','completion'] as const;
+/** General's empty conversation fields use the shipped default, so default updates reach them. */
+export function withDefaultFlow(config:ModeConfig, flow:ModeFlow):ModeConfig {
+ return {...config,...Object.fromEntries(flowFields.map(key=>[key,config[key].trim()?config[key]:flow[key]]))};
+}
+/** Stores a field equal to the shipped default as empty, so it keeps following the default. */
+export function withoutDefaultFlow(config:ModeConfig, flow:ModeFlow):ModeConfig {
+ return {...config,...Object.fromEntries(flowFields.map(key=>[key,config[key].trim()===flow[key].trim()?'':config[key]]))};
+}
 export function modePrompt(text:string, config:ModeConfig):string {
  return [text,config.guidance&&`Conversation guidance\n${config.guidance}`,config.details&&`Details to clarify when relevant\n${config.details}`,config.completion&&`When to finish\n${config.completion}`].filter(Boolean).join('\n\n');
 }

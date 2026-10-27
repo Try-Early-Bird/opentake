@@ -1,3 +1,4 @@
+import { splitReplies } from '../../../shared/reply-options';
 import {RuleRunHistory} from './RuleRunHistory';
 import {TakeRules} from './TakeRules';
 import {InstrumentMarketLink} from './InstrumentMarketLink';
@@ -345,7 +346,7 @@ function TakeHistory({view,older,busy,readOnly,error,onUse,onLoadOlder}:{view:Ba
 }
 function SourceMessage({proposal}:{proposal:Proposal}){
  const [text,setText]=useState('Loading…');
- return <Dialog onOpenChange={open=>{if(open)void window.strategies.source(proposal.id).then(message=>setText(message?.text||'This response contains the proposed take without additional text.')).catch(()=>setText('Source message could not be loaded.'));}}><DialogTrigger className="underline underline-offset-4">View source message</DialogTrigger><DialogContent><DialogTitle>Source message</DialogTitle><p className="whitespace-pre-wrap">{text}</p><p className="text-xs text-muted-foreground">Message {proposal.sourceMessageId}</p></DialogContent></Dialog>;
+ return <Dialog onOpenChange={open=>{if(open)void window.strategies.source(proposal.id).then(message=>setText((message&&splitReplies(message.text).text)||'This response contains the proposed take without additional text.')).catch(()=>setText('Source message could not be loaded.'));}}><DialogTrigger className="underline underline-offset-4">View source message</DialogTrigger><DialogContent><DialogTitle>Source message</DialogTitle><p className="whitespace-pre-wrap">{text}</p><p className="text-xs text-muted-foreground">Message {proposal.sourceMessageId}</p></DialogContent></Dialog>;
 }
 
 // One consequence of committing, as the confirmation dialog lists them.

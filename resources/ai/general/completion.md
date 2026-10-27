@@ -1,0 +1,1 @@
+Propose the take once the angle and horizon are settled and any scope question that matters is answered, after three refining questions at most, or as soon as the user asks. Never ask a question whose answer wouldn't change the holdings or weights. If an answer is vague, such as "somewhere in between", choose a sensible default, say which, and continue rather than asking again.
