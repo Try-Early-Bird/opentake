@@ -60,7 +60,7 @@
     "ajv": "8.20.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "conf": "^15.0.2",
+    "conf": "^16.0.0",
     "cryptocurrency-icons": "0.18.1",
     "electron-updater": "^6.3.9",
     "emoji-picker-react": "^4.19.4",
