@@ -65,7 +65,7 @@ export function CoinbaseSetup({ existing, connections, onConnected, onClose }: {
   const permissionChoice = <fieldset disabled={busy} className="space-y-2">
     <legend className="mb-2 text-sm font-medium text-zinc-300">What should the key allow?</legend>
     <div className="grid grid-cols-2 gap-2">{[{ value: false, label: 'Trading', detail: 'View + Trade' }, { value: true, label: 'Read-only', detail: 'View only' }].map(option => <label key={option.label} className={`flex cursor-pointer items-start gap-2.5 rounded-xl p-3 ${readOnly === option.value ? 'bg-[#202024]' : 'hover:bg-[#17171a]'}`}>
-      <input type="radio" name={group} checked={readOnly === option.value} onChange={() => setReadOnly(option.value)} className="mt-0.5 size-4 shrink-0 appearance-none rounded-full border border-zinc-600 bg-transparent checked:border-[5px] checked:border-zinc-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-400" />
+      <input type="radio" name={group} checked={readOnly === option.value} onChange={() => { setReadOnly(option.value); setError(''); }} className="mt-0.5 size-4 shrink-0 appearance-none rounded-full border border-zinc-600 bg-transparent checked:border-[5px] checked:border-zinc-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-400" />
       <span><span className="block text-sm font-medium">{option.label}</span><span className="mt-0.5 block text-xs text-zinc-400">{option.detail}</span></span>
     </label>)}</div>
   </fieldset>;
