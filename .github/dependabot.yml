@@ -1,4 +1,5 @@
-# Monthly version updates, grouped into one pull request per ecosystem.
+# Monthly version updates. Patch and minor npm updates share one pull request;
+# each major npm update opens on its own so it can be tested separately.
 # Security fixes are separate and open as soon as an advisory lands.
 version: 2
 updates:
@@ -10,6 +11,7 @@ updates:
     groups:
       npm:
         patterns: ["*"]
+        update-types: ["minor", "patch"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
