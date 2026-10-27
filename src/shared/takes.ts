@@ -24,7 +24,7 @@ export interface TakeSend { documents?:string[]; coinbaseAccountRef?: string | n
   /** Sent from the thread (retry, edit, continue), not the composer: leave the member's unsent draft alone. */
   keepDraft?: boolean }
 export interface InstructionProfile { id: string; name: string; text: string; updatedAt: string; config: ModeConfig; published: PublishedMode | null; builtin: boolean; followsDefault: boolean }
-import type { ModeConfig, PublishedMode, InstructionLabel } from './instruction-modes';
+import type { ModeConfig, ModeFlow, PublishedMode, InstructionLabel } from './instruction-modes';
 export interface TakeSnapshot { mode?:'replace'|'merge';messagesNext?:string|null;takesNext?:string|null; revision: string; activeTakeId?: string | null; activeTakeIds?: string[]; takes: TakeSummary[]; take: Take | null; running: boolean }
 export interface TakesAPI {
   document(action:DocumentAction,input:unknown):Promise<unknown>;
@@ -48,7 +48,7 @@ export interface TakesAPI {
   stop(id: string): Promise<void>;
   upload(takeId: string, name: string, base64: string): Promise<ImageAttachment>;
   image(id: string): Promise<string>;
-  instructions(): Promise<{ defaults: string; required: string; about: string }>;
+  instructions(): Promise<{ defaults: string; flow: ModeFlow; required: string; about: string }>;
   instructionProfiles(): Promise<InstructionProfile[]>;
   saveInstructionProfile(profile: { id?: string; name: string; text: string; config?: ModeConfig }): Promise<string>;
   publishInstructionProfile(id: string): Promise<void>;

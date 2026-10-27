@@ -407,3 +407,8 @@ disposable Electron profile with secret access disabled. Coverage includes a
 scans, invalid uploads, branch isolation, chunk retries, context budgets, cascade
 cleanup, migration from version 81, and image replay compatibility. Live provider
 reasoning and cross-platform installer packaging remain unverified.
+
+## Reply buttons and General's conversation fields
+
+`unit/reply-options.test.ts` covers the reply-button parser. `unit/takes.test.ts`
+covers General's shipped conversation fields (`resources/ai/general/`).

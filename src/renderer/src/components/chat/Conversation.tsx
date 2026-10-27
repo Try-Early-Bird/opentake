@@ -15,7 +15,11 @@ import type { ModelProvider, ModelResult } from '../../../../shared/ai-models';
 import type { Take, TakeMessage, ToolActivity } from '../../../../shared/takes';
 import { visibleMessages } from '../../../../shared/takes';
 import { ReferenceImage } from './ReferenceImage';
-const convert=(m:TakeMessage):ThreadMessageLike=>({id:m.id,role:m.role,content:[{type:'text',text:m.text}],createdAt:new Date(m.createdAt),...(m.role==='assistant'?{status:m.state==='running'||m.state==='starting'?{type:'running' as const}:{type:'complete' as const,reason:'stop' as const}}:{})});
+import { splitReplies, type ReplyOptions } from '../../../../shared/reply-options';
+const streaming=(m:TakeMessage)=>m.state==='running'||m.state==='starting';
+/** What the member reads: an assistant reply without its reply-button block. */
+const shown=(m:TakeMessage)=>m.role==='assistant'?splitReplies(m.text,streaming(m)).text:m.text;
+const convert=(m:TakeMessage):ThreadMessageLike=>({id:m.id,role:m.role,content:[{type:'text',text:shown(m)}],createdAt:new Date(m.createdAt),...(m.role==='assistant'?{status:m.state==='running'||m.state==='starting'?{type:'running' as const}:{type:'complete' as const,reason:'stop' as const}}:{})});
 /** "5 min · 20 tool calls · 20 turns · 50k tokens · $1.00" */
 function runLimitsText(l:NonNullable<NonNullable<TakeMessage['ruleRun']>['limits']>){
  return [`${Math.round(l.durationMs/60000)} min`,l.toolCalls&&`${l.toolCalls} tool calls`,l.modelTurns&&`${l.modelTurns} turns`,l.outputTokens&&`${l.outputTokens>=1000?Math.round(l.outputTokens/1000)+'k':l.outputTokens} tokens`,`$${l.costUsd.toFixed(2)}`].filter(Boolean).join(' · ');
@@ -47,6 +51,13 @@ function RuleRunActions({limits,onOpenRule}:{limits?:NonNullable<TakeMessage['ru
  return <div className="mt-2 pl-4 text-xs text-muted-foreground"><p className="flex gap-4">{limits&&<button type="button" aria-expanded={open} onClick={()=>setOpen(v=>!v)} className="hover:text-foreground">Run details</button>}<button type="button" onClick={onOpenRule} className="hover:text-foreground">Open rule</button></p>
   {open&&limits&&<p className="mt-1.5 tabular-nums">Automatic run, no one watching. Limits {runLimitsText(limits)}</p>}</div>;
 }
+/** The latest reply's suggested answers. Choosing one sends it as your message; "other" puts you in the composer. */
+function ReplyButtons({replies,disabled,onChoose,onOther}:{replies:ReplyOptions;disabled:boolean;onChoose:(text:string)=>void;onOther:(hint:string)=>void}){
+ return <div role="group" aria-label="Suggested replies" className="flex flex-wrap items-center gap-2">
+  {replies.options.map(option=><button key={option} type="button" disabled={disabled} onClick={()=>onChoose(option)} className="rounded-xl bg-muted px-4 py-2 text-left text-sm hover:bg-muted/70 focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40">{option}</button>)}
+  {replies.other&&<button type="button" disabled={disabled} onClick={()=>onOther(replies.other!)} className="px-2 py-2 text-xs text-muted-foreground hover:text-foreground disabled:opacity-40">{replies.other}</button>}
+ </div>;
+}
 /** Which account a reply used, and whether older turns were condensed for it. */
 function ReplyContext({message}:{message:TakeMessage}){
  const [open,setOpen]=useState(false);const condensed=message.context?.condensedMessages;
@@ -57,7 +68,7 @@ function ReplyContext({message}:{message:TakeMessage}){
   {open&&<p className="mt-1.5">Excerpts from {condensed} older {condensed===1?'reply':'replies'} and their tool results were used. Your messages, images and recent turns were kept in full. The original conversation is still available above.</p>}
  </div>;
 }
-export function Conversation({take,catalogs,running,onSend,onBranch,onError,onReviewBasket}:{take:Take;catalogs:Partial<Record<ModelProvider,ModelResult>>;running:boolean;onSend:(text:string,parent:string|null,images?:string[],regenerate?:boolean,documents?:string[],keepDraft?:boolean)=>Promise<void>;onBranch:(id:string)=>void;onError:(s:string)=>void;onReviewBasket:(takeId:string)=>void}) {
+export function Conversation({take,catalogs,running,onSend,onBranch,onError,onReviewBasket,onCompose}:{take:Take;catalogs:Partial<Record<ModelProvider,ModelResult>>;running:boolean;onSend:(text:string,parent:string|null,images?:string[],regenerate?:boolean,documents?:string[],keepDraft?:boolean)=>Promise<void>;onBranch:(id:string)=>void;onError:(s:string)=>void;onReviewBasket:(takeId:string)=>void;onCompose:(hint:string)=>void}) {
  const messages=useMemo(()=>visibleMessages(take),[take]);const [editing,setEditing]=useState<string>();const [edit,setEdit]=useState('');const [copied,setCopied]=useState<string>();
  useEffect(()=>{const open=(event:Event)=>{const id=(event as CustomEvent<{requestId:string}>).detail?.requestId;const node=id&&document.querySelector(`[data-rule-request="${CSS.escape(id)}"]`);if(node)node.scrollIntoView({block:'start',behavior:'smooth'});};window.addEventListener('take-rule-run-open',open);return()=>window.removeEventListener('take-rule-run-open',open);},[]);
  useEffect(()=>{if(!copied)return;const timer=setTimeout(()=>setCopied(undefined),2000);return()=>clearTimeout(timer);},[copied]);
@@ -81,7 +92,7 @@ export function Conversation({take,catalogs,running,onSend,onBranch,onError,onRe
   </MessagePrimitive.Root>;
   const siblings=take.messages.filter(m=>m.parentId===message.parentId&&m.role===message.role);
   const versions=(message.versionCount??0)>1?<MessageVersions key={message.id} takeId={take.id} messageId={message.id} number={message.versionNumber??1} count={message.versionCount!} disabled={running} onBranch={onBranch}/>:siblings.length>1&&<VersionPager number={siblings.findIndex(m=>m.id===message.id)+1} count={siblings.length} disabled={running} onStep={target=>onBranch(siblings[target-1].id)}/>;
-  const copy=<button type="button" className={action} onClick={()=>void navigator.clipboard.writeText(message.text).then(()=>setCopied(message.id)).catch(()=>onError('Could not copy message.'))}>{copied===message.id?'Copied':'Copy'}</button>;
+  const copy=<button type="button" className={action} onClick={()=>void navigator.clipboard.writeText(shown(message)).then(()=>setCopied(message.id)).catch(()=>onError('Could not copy message.'))}>{copied===message.id?'Copied':'Copy'}</button>;
   const time=<time className="tabular-nums" dateTime={message.createdAt} title={new Date(message.createdAt).toLocaleString()}>{clock(message.createdAt)}</time>;
   const attachments=<>{!!message.documents?.length&&<div className="flex flex-wrap justify-end gap-2">{message.documents.map(doc=><ReferenceDocument key={doc.id} document={doc}/>)}</div>}
    {!!message.images.length&&<div className="flex flex-wrap justify-end gap-2">{message.images.map(image=><ReferenceImage key={image.id} image={image}/>)}</div>}</>;
@@ -96,10 +107,13 @@ export function Conversation({take,catalogs,running,onSend,onBranch,onError,onRe
   </MessagePrimitive.Root></>;
   const active=message.state==='running'||message.state==='starting',ended=['failed','interrupted','cancelled'].includes(message.state);
   const current=[...message.tools].reverse().find(t=>t.state==='running');
+  // Only the latest finished reply offers buttons; older answers stay in the thread as text.
+  const replies=index===messages.length-1&&message.state==='completed'&&!message.imported?splitReplies(message.text).replies:null;
   return <>{divider}<MessagePrimitive.Root data-message-id={message.id} className="min-w-0 space-y-3 [overflow-wrap:anywhere]" aria-label="AI response">
   <p className="text-xs text-muted-foreground"><span className="font-medium text-foreground/80">{message.imported?'Imported reply':responseLabel}</span> · {time}</p>
   {!!message.tools.length&&<ToolActivityList tools={message.tools}/>}
   <MessagePrimitive.Content components={{Text:Markdown}}/>
+  {replies&&<ReplyButtons replies={replies} disabled={running} onChoose={text=>void onSend(text,message.id,[],false,[],true).catch(e=>onError(e.message))} onOther={onCompose}/>}
   {!message.text&&active&&<div role="status" className="space-y-2 text-sm text-muted-foreground"><p className="flex items-center gap-2.5"><StatusDot tone="attention"/>{current?`Using ${toolName(current.name).toLowerCase()}…`:'Thinking…'}</p><span aria-hidden="true" className="flex gap-1 pl-px">{[0,1,2].map(i=><span key={i} className="size-1 rounded-full bg-muted-foreground animate-pulse motion-reduce:animate-none" style={{animationDelay:`${i*200}ms`}}/>)}</span><button type="button" onClick={stop} className="block text-xs hover:text-foreground">Stop</button></div>}
   {(message.coinbaseAccount||message.context)&&<ReplyContext message={message}/>}
   {message.error&&message.state!=='cancelled'&&<p role="alert" className="text-sm">{message.stopReason?<><span className="font-medium text-destructive">Stopped early.</span> {message.error}</>:<span className="text-destructive">{message.error}</span>}</p>}

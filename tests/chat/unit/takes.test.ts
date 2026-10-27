@@ -64,6 +64,36 @@ test('General follows app defaults until customized, restores them, and historic
  }finally{await first.close();await db.close();}
 });
 
+test('General conversation fields follow the shipped flow until edited, and an emptied field returns to it',async()=>{
+ const db=new PGlite();await migrate(db);const lifecycle={use:async <T>(fn:(d:PGlite)=>Promise<T>)=>fn(db)};
+ const prompts:string[]=[];const execute:TakeExecutor=async i=>{prompts.push(i.instructions);i.text('Done');};
+ const flow={guidance:'Ship guidance one',details:'Ship details',completion:'Ship completion'};
+ const service=createTakes(lifecycle,execute,models,async()=>[],'App defaults',undefined,undefined,flow);
+ const stored=async()=>(await db.query<{config:Record<string,string>}>("SELECT config FROM ai_instruction_profiles WHERE builtin='general'")).rows[0].config;
+ try{
+  await service.start();const id=await service.create();
+  const send=async(text:string)=>{await service.send({requestId:randomUUID(),takeId:id,parentId:null,text,selection});await settle(service);};
+  const general=(await service.instructionProfiles())[0];
+  expect(general.config).toMatchObject(flow);expect(general.published?.config).toMatchObject(flow);expect((await service.instructions()).flow).toEqual(flow);
+  await send('First');expect(prompts[0]).toContain('Conversation guidance\nShip guidance one');expect(prompts[0]).toContain('When to finish\nShip completion');
+  // Saving the shown defaults keeps them empty in storage, so a later shipped flow still reaches General.
+  await service.saveInstructionProfile({id:general.id,name:'General',text:'App defaults',config:general.config});
+  expect(await stored()).toMatchObject({guidance:'',details:'',completion:''});
+  const updated=createTakes(lifecycle,execute,models,async()=>[],'App defaults',undefined,undefined,{...flow,guidance:'Ship guidance two'});
+  try{await updated.start();expect((await updated.instructionProfiles())[0].config.guidance).toBe('Ship guidance two');}finally{await updated.close();}
+  await service.saveInstructionProfile({id:general.id,name:'General',text:'My own rules',config:{...general.config,guidance:'Ask one thing at a time'}});await service.publishInstructionProfile(general.id);
+  await send('Custom');expect(prompts[1]).toContain('Ask one thing at a time');expect(prompts[1]).not.toContain('Ship guidance');expect(prompts[1]).toContain('Ship details');
+  await service.saveInstructionProfile({id:general.id,name:'General',text:'My own rules',config:{...general.config,guidance:''}});
+  expect((await service.instructionProfiles())[0].config.guidance).toBe('Ship guidance one');
+  await service.saveInstructionProfile({id:general.id,name:'General',text:'My own rules',config:{...general.config,details:'Only the horizon'}});
+  await service.restoreDefaultInstructions(general.id);
+  expect(await stored()).toMatchObject({guidance:'',details:'',completion:''});expect((await service.instructionProfiles())[0]).toMatchObject({followsDefault:true,config:flow});
+  // Saved instruction sets keep exactly what the member wrote.
+  const research=await service.saveInstructionProfile({name:'Research',text:'Research carefully'});
+  expect((await service.instructionProfiles()).find(p=>p.id===research)?.config).toMatchObject({guidance:'',details:'',completion:''});
+ }finally{await service.close();await db.close();}
+});
+
 test('runs layer required rules, about-you context and the chosen instructions, without legacy take text',async()=>{
  const db=new PGlite();await migrate(db);const lifecycle={use:async <T>(fn:(d:PGlite)=>Promise<T>)=>fn(db)};
  const prompts:string[]=[];const service=createTakes(lifecycle,async i=>{prompts.push(i.instructions);i.text('Done');},models,async()=>[],'App defaults');
