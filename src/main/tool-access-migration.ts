@@ -18,3 +18,8 @@ CREATE TABLE tool_access_requests (
 CREATE INDEX tool_access_requests_message ON tool_access_requests(message_id);
 CREATE UNIQUE INDEX tool_access_requests_one_pending ON tool_access_requests(take_id,server_id,tool_name) WHERE status='pending';
 `};
+// What the member granted: the setting chat asked for, or "ask" when they
+// turned the tool on but kept approving each use.
+export const toolAccessGrantedMigration={version:113,name:'Tool access requests record the setting granted',sql:`
+ALTER TABLE tool_access_requests ADD COLUMN granted text CHECK (granted IN ('ask','allowed'));
+`};

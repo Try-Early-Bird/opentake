@@ -14,6 +14,8 @@ export class ToolAccessError extends Error {}
 export const requestToolAccessName='opentake_request_tool_access';
 export const toolAccessRequest=z.object({serverId:z.uuid(),name:z.string().min(1).max(200),policy:z.enum(['ask','allowed']),reason:z.string().trim().min(1).max(300)}).strict();
 const rank:Record<ToolPolicy,number>={blocked:0,ask:1,allowed:2};
+/** The member's answer: what chat asked for, turned on but still asking first, or nothing. */
+export const toolAccessAnswer=z.enum(['allowed','ask','decline']);
 
 export interface ToolAccessDeps {
  list():Promise<{servers:ManagedServer[];tools:ManagedTool[]}>;
@@ -79,18 +81,22 @@ export function createToolAccess(deps:ToolAccessDeps){
   },
   /** The requests a reply filed, for its card. */
   async forMessage(messageId:unknown):Promise<ToolAccessRequest[]>{
-   const rows=(await deps.use(db=>db.query<Omit<ToolAccessRequest,'server'>>(`SELECT id,message_id AS "messageId",server_id AS "serverId",tool_name AS "toolName",policy,reason,status,to_json(created_at)#>>'{}' AS "createdAt" FROM tool_access_requests WHERE message_id=$1 ORDER BY created_at`,[z.uuid().parse(messageId)]))).rows;
+   const rows=(await deps.use(db=>db.query<Omit<ToolAccessRequest,'server'|'readOnly'>>(`SELECT id,message_id AS "messageId",server_id AS "serverId",tool_name AS "toolName",policy,granted,reason,status,to_json(created_at)#>>'{}' AS "createdAt" FROM tool_access_requests WHERE message_id=$1 ORDER BY created_at`,[z.uuid().parse(messageId)]))).rows;
    if(!rows.length)return [];
-   const {servers}=await deps.list();
-   return rows.map(r=>({...r,server:servers.find(s=>s.id===r.serverId)?.config.name??'Unknown server'}));
+   const {servers,tools}=await deps.list();
+   return rows.map(r=>({...r,server:servers.find(s=>s.id===r.serverId)?.config.name??'Unknown server',
+    // The server's own hint, shown as a label only; it never decides anything.
+    readOnly:tools.find(t=>t.server_id===r.serverId&&t.name===r.toolName)?.definition.annotations?.readOnlyHint===true}));
   },
-  /** The member's answer. Approving checks the request against the tools as they are now. */
-  async decide(id:string,approved:boolean){
+  /** The member's answer. Turning a tool on checks the request against the tools as they are now, and never opens it wider than chat asked. */
+  async decide(id:string,raw:unknown){
+   const answer=toolAccessAnswer.parse(raw);
    const row=(await deps.use(db=>db.query<{server_id:string;tool_name:string;policy:'ask'|'allowed';reason:string;status:string}>('SELECT server_id,tool_name,policy,reason,status FROM tool_access_requests WHERE id=$1',[z.uuid().parse(id)]))).rows[0];
    if(!row)throw new ToolAccessError('This request is no longer available.');
    if(row.status!=='pending')throw new ToolAccessError('This request was already answered.');
-   const result=approved?await apply({serverId:row.server_id,name:row.tool_name,policy:row.policy,reason:row.reason}):null;
-   const updated=(await deps.use(db=>db.query("UPDATE tool_access_requests SET status=$2,decided_at=now() WHERE id=$1 AND status='pending' RETURNING id",[id,approved?'approved':'declined']))).rows;
+   const granted=answer==='decline'?null:rank[answer]<rank[row.policy]?answer:row.policy;
+   const result=granted?await apply({serverId:row.server_id,name:row.tool_name,policy:granted,reason:row.reason}):null;
+   const updated=(await deps.use(db=>db.query("UPDATE tool_access_requests SET status=$2,granted=$3,decided_at=now() WHERE id=$1 AND status='pending' RETURNING id",[id,granted?'approved':'declined',granted]))).rows;
    if(!updated.length)throw new ToolAccessError('This request was already answered.');
    return result??{changed:false};
   },
