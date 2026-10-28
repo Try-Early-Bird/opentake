@@ -4,7 +4,7 @@ import { mkdtemp, rm, readdir, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { grokExecutor, discoverGrokModels, grokPrompt } from '../../../src/main/grok-chat';
+import { grokExecutor, discoverGrokModels, grokModels, grokPrompt } from '../../../src/main/grok-chat';
 import { createModelDiscovery } from '../../../src/main/ai-models';
 import { createUsageCollector } from '../../../src/main/chat-usage';
 import { grokAgentProfile, grokChatConfig } from '../../../src/main/grok-acp';
@@ -22,8 +22,8 @@ function input(signal = new AbortController().signal) {
 }
 const fixture = String.raw`
 const emit = v => console.log(JSON.stringify({jsonrpc:'2.0',...v}));
-const mode=process.argv[1],fs=require('node:fs');let promptId,serverId;
-const models={availableModels:[{modelId:'grok-fixture',name:'Grok fixture'}]};
+const mode=process.argv[1],fs=require('node:fs');let promptId,serverId,modelSet,effort;
+const models={availableModels:[{modelId:'grok-fixture',name:'Grok fixture',_meta:{supportsReasoningEffort:true,reasoningEfforts:['low',{value:'high'}]}}]};
 const update=text=>emit({method:'session/update',params:{sessionId:mode==='wrong-session'?'other':'session',update:{sessionUpdate:'agent_message_chunk',content:{type:'text',text}}}});
 require('node:readline').createInterface({input:process.stdin}).on('line',line=>{
  const e=JSON.parse(line);fs.appendFileSync('requests.jsonl',line+'\n');
@@ -32,7 +32,8 @@ require('node:readline').createInterface({input:process.stdin}).on('line',line=>
  if(e.method==='authenticate'){emit({id:e.id,result:{}});return;}
  if(e.method==='session/new'){if(e.params._meta.agentProfile.tools.join(',')!=='search_tool,use_tool')process.exit(4);serverId=e.params._meta['x.ai/mcp/servers'][0].serverId;emit({id:'discover',method:'_x.ai/mcp/sdk_call',params:{serverId,message:{jsonrpc:'2.0',id:1,method:'server/discover'}}});emit({id:e.id,result:{sessionId:'session',models}});return;}
  if(e.id==='discover'){if(e.result?.error?.code!==-32601)process.exit(4);return;}
- if(e.method==='session/set_model'){emit({id:e.id,result:{}});return;}
+ if(e.method==='session/set_model'){modelSet=true;emit({id:e.id,result:{}});return;}
+ if(e.method==='session/set_config_option'){if(!modelSet||e.params.configId!=='reasoning_effort')process.exit(5);effort=e.params.value;emit({id:e.id,result:{configOptions:[]}});return;}
  if(e.method==='session/prompt'){
   promptId=e.id;
   if(mode==='hang')return;
@@ -41,6 +42,7 @@ require('node:readline').createInterface({input:process.stdin}).on('line',line=>
   if(mode==='native'){emit({id:'native',method:'terminal/create',params:{command:'touch forbidden'}});return;}
   if(mode==='limit'){emit({id:e.id,result:{stopReason:'max_turn_requests'}});return;}
   if(mode==='billing'){emit({id:e.id,error:{code:-32000,data:{statusCode:429},message:'private-provider-diagnostic'}});return;}
+  if(effort)update('Effort '+effort+'. ');
   update('Before synthetic-');update('access. ');
   const params={serverId,message:{jsonrpc:'2.0',id:17,method:'tools/call',params:{name:mode==='unknown-tool'?'shell':'marker',arguments:{q:'synthetic'}}}};
   emit({id:99,method:'_x.ai/mcp/sdk_call',params:{method:'x.ai/mcp/sdk_call',params}});
@@ -105,6 +107,24 @@ test('Grok history carries prior roles and unknown tool outcomes without invokin
   expect(prompt.at(-1)?.text).toBe('Current user message:\nHello');
   run.messages[0].images = [{ id: 'fake', name: 'fake.png', mime: 'image/png', width: 1, height: 1, bytes: 1 }];
   await expect(grokPrompt(run)).rejects.toThrow('does not support image');
+});
+test('Grok effort is set after the model and only when the model lists it', async () => {
+  const f = await setup('success');
+  try {
+    f.result.run.selection = { provider: 'grok', model: 'grok-fixture', effort: 'high' };
+    await grokExecutor(store, f.root, f.deps)(f.result.run);
+    expect(f.result.text.join('')).toBe('Effort high. Before [redacted]. After tool.');
+    const g = await setup('success'); g.result.run.selection = { provider: 'grok', model: 'grok-fixture', effort: 'xhigh' };
+    try { await expect(grokExecutor(store, g.root, g.deps)(g.result.run)).rejects.toThrow('thinking effort is unavailable'); } finally { await g.cleanup(); }
+  } finally { await f.cleanup(); }
+});
+test('Grok effort levels come from model meta, skipping custom option ids', () => {
+  expect(grokModels({ availableModels: [
+    { modelId: 'listed', name: 'Listed', _meta: { supportsReasoningEffort: true, reasoningEfforts: ['high', { value: 'low', label: 'Fast' }, { id: 'deep', value: 'xhigh' }, 'future', null] } },
+    { modelId: 'unlisted', name: 'Unlisted', _meta: { supportsReasoningEffort: true } },
+    { modelId: 'unsupported', name: 'Unsupported', _meta: { supportsReasoningEffort: false, reasoningEfforts: ['high'] } },
+    { modelId: 'plain', name: 'Plain' },
+  ] }).map(m => m.effortLevels)).toEqual([['low', 'high'], ['minimal', 'low', 'medium', 'high', 'xhigh'], undefined, undefined]);
 });
 test('Grok model discovery requests the catalog after an empty handshake, cleans up and caches runtime choices', async () => {
   const f = await setup('success');

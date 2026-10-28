@@ -8,7 +8,7 @@ import { atomicPrivateWrite } from './private-files';
 import { runLimits } from './run-budget';
 import { chatLimits } from '../shared/chat-limits';
 import type { AgentExecutor as TakeExecutor, RunInput } from './take-runtime';
-import type { AiModel } from '../shared/ai-models';
+import type { AiModel, ReasoningEffort } from '../shared/ai-models';
 import { AdapterError, manageChild, nativeCapture, nativeFailure, protocolError, secretCleaner, withNativeChat, type NativeDependencies, historyModes } from './native-chat-process';
 import { nativeHistory, opencodeHistory, quotedHistory } from './native-chat-history';
 
@@ -17,12 +17,14 @@ import { nativeHistory, opencodeHistory, quotedHistory } from './native-chat-his
 export type CompatibleTarget = {kind:'compatible';providerID:'local'|'openrouter';name:string;baseUrl:()=>Promise<string>;
   apiKey?:()=>Promise<string>;model?:(id:string)=>Promise<AiModel|undefined>;missing:string};
 export type OpenCodeTarget = {kind:'zen'} | CompatibleTarget;
-type CompatibleModel = {providerID:string;name:string;baseUrl:string;model:string;keyed:boolean;pricing?:AiModel['pricing']};
+type CompatibleModel = {providerID:string;name:string;baseUrl:string;model:string;keyed:boolean;pricing?:AiModel['pricing'];efforts?:ReasoningEffort[]};
 export function opencodeChatConfig(instructions:string,bridge:string,runId:string,port:number,compatible?:CompatibleModel,turns:number=chatLimits.modelTurns) {
   // OpenCode prices a custom model only from configured cost (USD per million tokens).
   const provider=compatible
     ?{[compatible.providerID]:{npm:'@ai-sdk/openai-compatible',name:compatible.name,options:{baseURL:compatible.baseUrl,apiKey:compatible.keyed?'{env:OPENTAKE_PROVIDER_KEY}':'opentake-local'},
-      models:{[compatible.model]:{name:compatible.model,tool_call:true,...(compatible.pricing?{cost:{input:compatible.pricing.input,output:compatible.pricing.output}}:{})}}}}
+      // A custom model has only the variants configured here; OpenCode drops any other variant unsent.
+      models:{[compatible.model]:{name:compatible.model,tool_call:true,...(compatible.pricing?{cost:{input:compatible.pricing.input,output:compatible.pricing.output}}:{}),
+        ...(compatible.efforts?.length?{variants:Object.fromEntries(compatible.efforts.map(effort=>[effort,{reasoningEffort:effort}]))}:{})}}}}
     :{opencode:{options:{apiKey:'{env:OPENTAKE_ZEN_KEY}'}}};
   return {autoupdate:false,share:'disabled',snapshot:false,plugin:[],enabled_providers:[compatible?compatible.providerID:'opencode'],
     provider,
@@ -49,8 +51,9 @@ export function opencodeExecutor(keyFor:()=>Promise<string>,profile:string,bridg
       let key='',compatible:CompatibleModel|undefined;
       if(target.kind==='zen'){key=await keyFor();if(!key)throw new AdapterError('Connect OpenCode in Settings.');}
       else {
-        try{key=await target.apiKey?.()??'';compatible={providerID,name:target.name,baseUrl:await target.baseUrl(),model:input.selection.model,keyed:!!target.apiKey,
-          pricing:(await target.model?.(input.selection.model))?.pricing};}catch{throw new AdapterError(target.missing);}
+        try{key=await target.apiKey?.()??'';const model=await target.model?.(input.selection.model);
+          compatible={providerID,name:target.name,baseUrl:await target.baseUrl(),model:input.selection.model,keyed:!!target.apiKey,pricing:model?.pricing,efforts:model?.effortLevels};}catch{throw new AdapterError(target.missing);}
+        if(input.selection.effort&&!compatible.efforts?.includes(input.selection.effort))throw new AdapterError('This thinking effort is unavailable. Choose Default or refresh models.');
         if(target.apiKey&&!key)throw new AdapterError(target.missing);
         await ripgrepShim(home,env);
       }

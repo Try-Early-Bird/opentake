@@ -3,9 +3,10 @@ import { spawn } from 'node:child_process';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { join, dirname, delimiter } from 'node:path';
 import { resolveAiCli } from './ai-runtime';
+import { resolveOpenCode } from './opencode-runtime';
 import type { SecretStore } from './secret-store';
 import { reasoningEfforts } from '../shared/ai-models';
-import type { AiModel, ModelProvider, ModelResult } from '../shared/ai-models';
+import type { AiModel, ModelProvider, ModelResult, ReasoningEffort } from '../shared/ai-models';
 
 // Exact IDs verified 2026-10-01: https://platform.claude.com/docs/en/models/overview
 // Unknown future models stay unknown; this registry never supplies model choices.
@@ -43,12 +44,49 @@ export function parseOpenRouterModels(raw: unknown): AiModel[] {
     if (!Array.isArray(entry.supported_parameters) || !entry.supported_parameters.includes('tools')) continue;
     if (Array.isArray(entry.architecture?.output_modalities) && !entry.architecture.output_modalities.includes('text')) continue;
     const input = perMillion(entry.pricing?.prompt), output = perMillion(entry.pricing?.completion);
+    // OpenRouter lists each model's accepted efforts; OpenCode sends the chosen one as reasoning_effort.
+    const advertised = entry.reasoning?.supported_efforts;
+    const effortLevels = reasoningEfforts.filter(level => Array.isArray(advertised) && advertised.includes(level));
     result.push({ value: entry.id, label: (typeof entry.name === 'string' ? entry.name : entry.id).slice(0, 160),
+      ...(effortLevels.length ? { effortLevels } : {}),
       ...(typeof entry.description === 'string' ? { description: entry.description.slice(0, 600) } : {}),
       ...(Number.isSafeInteger(entry.created) ? { created: entry.created } : {}),
       ...(input !== undefined && output !== undefined ? { pricing: { input, output } } : {}) });
   }
   return result;
+}
+// OpenCode drops a variant it does not define for a model, so Zen levels come from
+// the installed CLI's own model list rather than the Zen catalog, which has none.
+export function parseOpenCodeVariants(output: string): Map<string, ReasoningEffort[]> {
+  const result = new Map<string, ReasoningEffort[]>();
+  for (const block of output.split(/^opencode\/\S+\r?\n/m).slice(1)) {
+    let model; try { model = JSON.parse(block); } catch { continue; }
+    if (typeof model?.id !== 'string' || !model.variants || typeof model.variants !== 'object') continue;
+    const levels = reasoningEfforts.filter(level => Object.hasOwn(model.variants, level));
+    if (levels.length) result.set(model.id, levels);
+  }
+  return result;
+}
+export async function discoverZenEfforts(root: string, launch: typeof spawn = spawn, command = resolveOpenCode): Promise<Map<string, ReasoningEffort[]>> {
+  await mkdir(root, { recursive: true, mode: 0o700 });
+  const home = await mkdtemp(join(root, 'opencode-'));
+  try {
+    const cli = command();
+    const env: NodeJS.ProcessEnv = {};
+    for (const key of ['PATH', 'SystemRoot', 'WINDIR', 'TMPDIR', 'TEMP', 'TMP', 'LANG']) if (process.env[key]) env[key] = process.env[key];
+    // Listing reads OpenCode's bundled catalog; the placeholder key only keeps paid models listed.
+    Object.assign(env, { HOME: home, USERPROFILE: home, XDG_CONFIG_HOME: home, XDG_DATA_HOME: home, XDG_CACHE_HOME: home, DISABLE_AUTOUPDATER: '1',
+      OPENCODE_CONFIG_CONTENT: JSON.stringify({ autoupdate: false, share: 'disabled', plugin: [], enabled_providers: ['opencode'], provider: { opencode: { options: { apiKey: 'opentake-discovery' } } } }) });
+    return await new Promise((resolve, reject) => {
+      const child = launch(cli.executable, [...cli.args, 'models', 'opencode', '--verbose'], { cwd: home, env, stdio: ['ignore', 'pipe', 'ignore'] });
+      let output = ''; let failed = false;
+      const timer = setTimeout(() => { failed = true; child.kill('SIGKILL'); }, 15000);
+      child.stdout!.setEncoding('utf8');
+      child.stdout!.on('data', data => { output += data; if (output.length > 4 * 1024 * 1024) { failed = true; child.kill('SIGKILL'); } });
+      child.on('error', () => { clearTimeout(timer); reject(new Error('OpenCode models unavailable')); });
+      child.on('close', code => { clearTimeout(timer); failed || code !== 0 ? reject(new Error('OpenCode models unavailable')) : resolve(parseOpenCodeVariants(output)); });
+    });
+  } finally { await rm(home, { recursive: true, force: true }); }
 }
 export async function discoverRuntimeModels(provider: 'claude' | 'chatgpt', credential: string, root: string, launch: typeof spawn = spawn, commandFor = resolveAiCli): Promise<AiModel[]> {
   await mkdir(root, { recursive: true, mode: 0o700 });
@@ -112,7 +150,7 @@ export async function discoverRuntimeModels(provider: 'claude' | 'chatgpt', cred
     });
   } finally { await rm(home, { recursive: true, force: true }); }
 }
-export function createModelDiscovery(store: SecretStore, root: string, status: () => Promise<{ provider: string; status: string }[]>, runtime = discoverRuntimeModels, request: typeof fetch = fetch, local: () => Promise<AiModel[]> = async () => [], grok = discoverGrokModels) {
+export function createModelDiscovery(store: SecretStore, root: string, status: () => Promise<{ provider: string; status: string }[]>, runtime = discoverRuntimeModels, request: typeof fetch = fetch, local: () => Promise<AiModel[]> = async () => [], grok = discoverGrokModels, zenEfforts = discoverZenEfforts) {
   const cache = new Map<ModelProvider, { at: number; value: ModelResult }>();
   const pending = new Map<ModelProvider, Promise<ModelResult>>();
   return async function models(value: unknown, refresh = false): Promise<ModelResult> {
@@ -134,9 +172,11 @@ export function createModelDiscovery(store: SecretStore, root: string, status: (
             choices = parseOpenRouterModels((await response.json()).data);
           }
           else if (provider === 'opencode') {
-            const response = await request('https://opencode.ai/zen/v1/models', { redirect: 'error', signal: AbortSignal.timeout(10000) });
+            // Effort is optional: without the CLI's variants the models still load, just without the slider.
+            const [response, efforts] = await Promise.all([request('https://opencode.ai/zen/v1/models', { redirect: 'error', signal: AbortSignal.timeout(10000) }),
+              zenEfforts(root).catch(() => new Map<string, ReasoningEffort[]>())]);
             if (!response.ok) throw new Error('Catalog unavailable');
-            choices = parseModels((await response.json()).data);
+            choices = parseModels((await response.json()).data).map(({ effortLevels: _, ...model }) => efforts.get(model.value) ? { ...model, effortLevels: efforts.get(model.value) } : model);
           } else {
             const credential = await store.get(`ai:subscription:v1:${provider}`);
             if (!credential) throw new Error('Missing connection');
