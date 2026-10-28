@@ -7,7 +7,6 @@ import type { AiModel, ReasoningEffort } from '../shared/ai-models';
 import { nativeHistory } from './native-chat-history';
 import { AdapterError, nativeCapture, protocolError, secretCleaner } from './native-chat-process';
 import { grokAcp, grokAgentProfile, grokInit, grokInitialize, withGrok, type GrokDependencies } from './grok-acp';
-import { grokVersion } from './grok-runtime';
 import { hostCall } from './host-rpc';
 import { createRunBudget, runLimits } from './run-budget';
 import { auditToolResult, replayToolContent } from './tool-output';
@@ -17,22 +16,23 @@ const object = z.record(z.string(), z.unknown());
 const grokDefaultEfforts: ReasoningEffort[] = ['minimal', 'low', 'medium', 'high', 'xhigh'];
 // Grok advertises effort in each model's `_meta`, and set_config_option takes an
 // option id. Keep only options whose id is the canonical level the slider sends.
-function grokEffortLevels(meta: Record<string, unknown> | null | undefined): ReasoningEffort[] {
-  if (meta?.supportsReasoningEffort !== true) return [];
+function grokEfforts(meta: Record<string, unknown> | null | undefined): Pick<AiModel, 'effortLevels' | 'defaultEffort'> {
+  if (meta?.supportsReasoningEffort !== true) return {};
   const known = (value: unknown): value is ReasoningEffort => reasoningEfforts.some(level => level === value);
   const options = Array.isArray(meta.reasoningEfforts) ? meta.reasoningEfforts.flatMap((option: unknown) => {
     const entry = object.safeParse(option).data;
     const value = typeof option === 'string' ? option : entry?.value;
-    return known(value) ? [{ id: typeof entry?.id === 'string' ? entry.id : value, value }] : [];
+    return known(value) ? [{ id: typeof entry?.id === 'string' ? entry.id : value, value, default: entry?.default === true }] : [];
   }) : [];
-  if (!options.length) return grokDefaultEfforts;
-  return reasoningEfforts.filter(level => options.some(option => option.id === level && option.value === level));
+  const effortLevels = options.length ? reasoningEfforts.filter(level => options.some(option => option.id === level && option.value === level)) : grokDefaultEfforts;
+  // The catalog default is meta.reasoningEffort, else the option marked default.
+  const defaultEffort = effortLevels.find(level => level === (meta.reasoningEffort ?? options.find(option => option.default)?.value));
+  return effortLevels.length ? { effortLevels, ...(defaultEffort ? { defaultEffort } : {}) } : {};
 }
 export function grokModels(value: unknown): AiModel[] {
   const state = z.object({ availableModels: z.array(z.object({ modelId: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_./:[\]-]{0,199}$/), name: z.string(), description: z.string().nullish(), _meta: object.nullish() })) }).parse(value);
   return [...new Map(state.availableModels.map((m): [string, AiModel] => {
-    const effortLevels = grokEffortLevels(m._meta);
-    return [m.modelId, { value: m.modelId, label: m.name.slice(0, 160), description: m.description?.slice(0, 600), imageInput: false, ...(effortLevels.length ? { effortLevels } : {}) }];
+    return [m.modelId, { value: m.modelId, label: m.name.slice(0, 160), description: m.description?.slice(0, 600), imageInput: false, ...grokEfforts(m._meta) }];
   })).values()];
 }
 export class GrokModelDiscoveryError extends Error {}
@@ -60,7 +60,7 @@ export async function discoverGrokModels(store: SecretStore, profile: string, de
     });
   } catch {
     // Only fixed app-owned text crosses IPC, never raw CLI/auth diagnostics.
-    throw new GrokModelDiscoveryError(`Could not load models while ${stage}. Check Grok in Settings and retry. Required CLI: ${grokVersion}.`);
+    throw new GrokModelDiscoveryError(`Could not load models while ${stage}. Check Grok in Settings and retry.`);
   }
 }
 // ACP has no standard role-preserving history injection. Send a typed transcript
@@ -84,7 +84,7 @@ export function grokExecutor(store: SecretStore, profile: string, deps: GrokDepe
     try {
       const toolSignal = AbortSignal.any([input.signal, stopTools.signal]);
       const prompt = await grokPrompt(input);
-      await withGrok(store, profile, input.signal, deps, async (home, command, credential) => {
+      await withGrok(store, profile, input.signal, deps, async (home, command, credential, cli) => {
         const auth = Object.values(JSON.parse(credential))[0] as Record<string, unknown>;
         const clean = secretCleaner([String(auth.key), typeof auth.refresh_token === 'string' ? auth.refresh_token : '', input.gateway!.token]);
         const capture = nativeCapture(input, clean), callHost = deps.gatewayCall ?? hostCall;
@@ -153,10 +153,10 @@ export function grokExecutor(store: SecretStore, profile: string, deps: GrokDepe
           const model = grokModels(session.models).find(m => m.value === input.selection.model);
           if (!model) throw new AdapterError('Grok model is unavailable. Refresh models and choose another model.');
           const effort = input.selection.effort;
-          if (effort && !model.effortLevels?.includes(effort)) throw new AdapterError('This thinking effort is unavailable. Choose Default or refresh models.');
+          if (effort && !model.effortLevels?.includes(effort)) throw new AdapterError('This thinking effort is unavailable. Choose another level or refresh models.');
           await client.request('session/set_model', { sessionId, modelId: input.selection.model });
           if (effort) await client.request('session/set_config_option', { sessionId, configId: 'reasoning_effort', value: effort });
-          await capture.audit('provider.lifecycle', { provider: 'grok', cliVersion: grokVersion, adapterVersion: '1' });
+          await capture.audit('provider.lifecycle', { provider: 'grok', cliVersion: cli.version, cliVerified: cli.verified, adapterVersion: '1' });
           await capture.audit('model.request', { boundary: 'acp', selection: input.selection, instructions: input.instructions, prompt, historyFormat: 'typed-context-v1' });
           prompting = true;
           const result = z.object({ stopReason: z.string(), _meta: object.optional() }).parse(await client.request('session/prompt', { sessionId, prompt }, runLimits.absoluteMs));

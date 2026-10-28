@@ -73,7 +73,8 @@ export function AiPicker({ provider, model, effort, connections, catalogs, disab
               </Menu.Item>
               {!open ? null : !result ? <p role="status" className="px-2 py-3 text-xs text-muted-foreground">Loading models…</p> : !result.ok ? <p className="px-2 py-2 text-xs text-muted-foreground">{result.message}</p> : !result.models.length ? <p className="px-2 py-3 text-xs text-muted-foreground">No models available. Refresh to retry.</p> :
                 <Menu.RadioGroup value={provider === id ? model : ''} onValueChange={value => selectModel(id, String(value))}>
-                  {shownModels(id, result.models).map(item => <Menu.RadioItem closeOnClick key={item.value} value={item.value} disabled={item.disabled}
+                  {/* A model with effort levels keeps the menu open so its slider can be set right away. */}
+                  {shownModels(id, result.models).map(item => <Menu.RadioItem closeOnClick={!item.effortLevels?.length || item.disabled} key={item.value} value={item.value} disabled={item.disabled}
                     label={shortLabel(item.label)} title={[item.resolvedModel, item.description].filter(Boolean).join(' · ')}
                     className="relative flex cursor-default items-center rounded-sm py-2 pr-8 pl-2 text-sm outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground data-[disabled]:opacity-40">
                     <span className="min-w-0"><span className="block break-words">{shortLabel(item.label)}</span>{(item.value === 'default' || /\(Default\)$/i.test(item.label)) && <span className="mt-0.5 block text-xs text-muted-foreground">Default</span>}</span>
@@ -94,7 +95,7 @@ export function AiPicker({ provider, model, effort, connections, catalogs, disab
             <RefreshCw size={14} aria-hidden="true" />Refresh models
           </Menu.Item>}
           </div>
-          {selected?.effortLevels?.length && !selected.disabled && connected(provider) ? <ThinkingEffort levels={selected.effortLevels} value={effort} disabled={disabled} onChange={value => onSelect(provider, model, value)} /> : null}
+          {selected?.effortLevels?.length && !selected.disabled && connected(provider) ? <ThinkingEffort levels={selected.effortLevels} value={effort} defaultValue={selected.defaultEffort} disabled={disabled} onChange={value => onSelect(provider, model, value)} /> : null}
         </Menu.Popup>
       </Menu.Positioner>
     </Menu.Portal>

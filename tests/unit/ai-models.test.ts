@@ -92,12 +92,12 @@ test('OpenRouter catalog keeps tool-capable text models with names, dates and pe
     { id: 'x-ai/grok-4.7', name: 'SpaceXAI: Grok 4.7', created: 1790007541, description: 'd', supported_parameters: ['tools', 'temperature'], architecture: { output_modalities: ['text'] }, pricing: { prompt: '0.000002', completion: '0.000006' } },
     { id: 'google/gemini-3.1-flash-image', name: 'Image only', supported_parameters: ['temperature'], pricing: { prompt: '0', completion: '0' } },
     { id: 'image/generator', name: 'Images out', supported_parameters: ['tools'], architecture: { output_modalities: ['image'] } },
-    { id: 'qwen/qwen3.8-27b:free', name: 'Qwen free', supported_parameters: ['tools'], pricing: { prompt: '0', completion: '0' }, reasoning: { supported_efforts: ['max', 'high', 'low', 'future'] } },
+    { id: 'qwen/qwen3.8-27b:free', name: 'Qwen free', supported_parameters: ['tools'], pricing: { prompt: '0', completion: '0' }, reasoning: { supported_efforts: ['max', 'high', 'low', 'future'], default_effort: 'high' } },
     { id: 'bad id with spaces', supported_parameters: ['tools'] }, null,
   ]);
   expect(models).toEqual([
     { value: 'x-ai/grok-4.7', label: 'SpaceXAI: Grok 4.7', description: 'd', created: 1790007541, pricing: { input: 2, output: 6 } },
-    { value: 'qwen/qwen3.8-27b:free', label: 'Qwen free', effortLevels: ['low', 'high', 'max'], pricing: { input: 0, output: 0 } },
+    { value: 'qwen/qwen3.8-27b:free', label: 'Qwen free', effortLevels: ['low', 'high', 'max'], defaultEffort: 'high', pricing: { input: 0, output: 0 } },
   ]);
   expect(models.every(m => m.imageInput === undefined)).toBe(true);
 });
@@ -110,4 +110,10 @@ test('effort discovery preserves only advertised levels in slider order', () => 
     { id: 'disabled', supportsEffort: false, supportedEffortLevels: ['high'] },
     { id: 'unknown' }, { id: 'bad', supportedReasoningEfforts: {} },
   ]).map(m => m.effortLevels)).toEqual([['low', 'high', 'max'], ['medium', 'xhigh'], undefined, undefined, undefined]);
+});
+test('a default effort is kept only when it is one of the listed levels', () => {
+  expect(parseModels([
+    { id: 'codex', supportedReasoningEfforts: [{ reasoningEffort: 'low' }, { reasoningEffort: 'high' }], defaultReasoningEffort: 'high' },
+    { id: 'unlisted', supportedReasoningEfforts: [{ reasoningEffort: 'low' }], defaultReasoningEffort: 'high' },
+  ]).map(m => m.defaultEffort)).toEqual(['high', undefined]);
 });

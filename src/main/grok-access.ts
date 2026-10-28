@@ -83,7 +83,7 @@ export function createGrokAccess(store: SecretStore, root: string, deps: Depende
       }
       return result;
     } catch {
-      return failed('Grok access could not be verified. Check that Grok CLI 1.0.46 is installed, or sign in to Grok again.');
+      return failed('Grok access could not be verified. Check that the Grok CLI is installed, or sign in to Grok again.');
     } finally {
       credential = null;
       if (home) await rm(home, { recursive: true, force: true });
