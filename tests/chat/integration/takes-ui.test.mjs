@@ -152,3 +152,55 @@ test('current Take chat offers starters, renders tool activity, keeps history an
     await stopHost(userData); await rm(userData, { recursive: true, force: true });
   }
 });
+test('reply buttons answer from their reply and stay on it with the pick marked', {timeout:30000},async()=>{
+ const profile=await mkdtemp(join(tmpdir(),'opentake-reply-buttons-'));let app;
+ try{
+  const env={...process.env};delete env.ELECTRON_RUN_AS_NODE;delete env.ELECTRON_RENDERER_URL;
+  app=await electron.launch({executablePath,args:['.',`--user-data-dir=${profile}`,'--earlybird-test-no-secrets'],env});
+  const page=await app.firstWindow();await page.setViewportSize({width:1440,height:900});page.setDefaultTimeout(5000);await dismissConnectionPrompt(page,app);
+  await app.evaluate(({ipcMain})=>{
+   for(const name of ['takes:snapshot','takes:create','takes:send','takes:update','chat:models','ai:status'])ipcMain.removeHandler(name);
+   ipcMain.handle('ai:status',()=>[{provider:'claude',status:'connected'}]);
+   ipcMain.handle('chat:models',(_event,provider)=>({ok:true,source:'runtime',models:[{value:provider+'-discovered',label:'Claude Sonnet fixture',resolvedModel:'claude-sonnet-fixture',description:'Synthetic model'}]}));
+   const takes=[];let revision=0,next=0;globalThis.replyFixture={sent:[]};
+   const replies=['Which layer is your bet?\n\n<replies>\n<reply>Existing reactors</reply>\n<reply>Uranium squeeze</reply>\n<other>My angle is different…</other>\n</replies>','When does it pay off?\n\n<replies>\n<reply>Next year or two</reply>\n<reply>Decade-long repricing</reply>\n</replies>'];
+   ipcMain.handle('takes:snapshot',(_event,id,archived,known)=>{const version=String(revision)+':'+id+':'+archived;if(known===version)return null;return {revision:version,takes:takes.filter(t=>!!t.archivedAt===archived),take:takes.find(t=>t.id===id)??null,running:false};});
+   ipcMain.handle('takes:create',()=>{const id='take-'+(++next);takes.unshift({id,title:'New Take',messages:[],headId:null,draft:'',draftImages:[],instructions:'',archivedAt:null,selection:{provider:'claude',model:'claude-discovered'}});revision++;return id;});
+   ipcMain.handle('takes:update',(_event,id,patch)=>{Object.assign(takes.find(t=>t.id===id),patch);revision++;});
+   ipcMain.handle('takes:send',(_event,request)=>{
+    globalThis.replyFixture.sent.push({text:request.text,parentId:request.parentId});
+    const take=takes.find(t=>t.id===request.takeId);const now=new Date().toISOString();const uid='user-'+(++next),aid='assistant-'+(++next);
+    const text=replies[Math.min(take.messages.filter(m=>m.role==='assistant').length,1)];
+    take.messages.push({id:uid,parentId:request.parentId,role:'user',text:request.text,images:[],tools:[],createdAt:now,selection:request.selection,state:'completed'},
+     {id:aid,parentId:uid,role:'assistant',text,images:[],tools:[],createdAt:now,selection:request.selection,state:'completed'});
+    take.headId=aid;take.title=take.title==='New Take'?request.text:take.title;revision++;
+   });
+  });
+  // Reload AI status from the fakes, as the chat test above does.
+  await page.getByRole('button',{name:'Settings',exact:true}).click();
+  await page.getByRole('link',{name:'Opentake home',exact:true}).click();
+  await page.getByRole('button',{name:'Choose AI model',exact:true}).click();
+  await page.getByRole('menuitem',{name:'Refresh models',exact:true}).click();
+  await page.getByRole('menuitemradio',{name:'Sonnet fixture',exact:true}).click();
+  await page.getByLabel('Message Claude').fill('Nuclear is the answer');
+  await page.getByRole('button',{name:'Send message',exact:true}).click();
+  const suggested=page.getByRole('group',{name:'Suggested replies'});
+  await suggested.getByRole('button',{name:'Existing reactors',exact:true}).waitFor();
+  assert.equal(await page.getByText('<replies>').count(),0);
+  await suggested.getByRole('button',{name:'Existing reactors',exact:true}).click();
+  await page.getByText('When does it pay off?',{exact:true}).waitFor();
+  const firstReply=(await app.evaluate(()=>globalThis.replyFixture.sent))[1];
+  assert.equal(firstReply.text,'Existing reactors');assert.match(firstReply.parentId,/^assistant-/);
+  // The earlier reply keeps its buttons with the pick marked; the pick is not repeated as your message.
+  const answered=page.getByRole('group',{name:'Your answer'});
+  assert.equal(await answered.getByRole('button',{name:'Existing reactors',exact:true}).getAttribute('aria-pressed'),'true');
+  assert.equal(await answered.getByRole('button',{name:'Uranium squeeze',exact:true}).getAttribute('aria-pressed'),'false');
+  assert.equal(await answered.getByText('My angle is different…').count(),0);
+  assert.equal(await page.getByRole('article',{name:'Your message'}).or(page.locator('[aria-label="Your message"]')).count(),1);
+  await suggested.getByRole('button',{name:'Decade-long repricing',exact:true}).waitFor();
+  // Picking another answer there answers again from that reply, like Edit.
+  await answered.getByRole('button',{name:'Uranium squeeze',exact:true}).click();
+  let sent=[];for(let i=0;i<50&&sent.length<3;i++){sent=await app.evaluate(()=>globalThis.replyFixture.sent);await new Promise(r=>setTimeout(r,100));}
+  assert.deepEqual(sent.at(-1),{text:'Uranium squeeze',parentId:firstReply.parentId});
+ }finally{if(app)await closeDesktop(app);await stopHost(profile);await rm(profile,{recursive:true,force:true});}
+});
