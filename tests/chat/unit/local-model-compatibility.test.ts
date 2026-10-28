@@ -108,8 +108,8 @@ test.skipIf(!executable || (mode === 'live' && !(liveUrl && liveModel)))(`${mode
   }
 }, 180000);
 
-// OpenRouter runs use the same OpenAI-compatible path with a key and list prices.
-test.skipIf(!executable)('scripted OpenRouter-style provider sends the key, reports priced cost and redacts the key', async () => {
+// OpenRouter runs use the same OpenAI-compatible path with a key, list prices and listed efforts.
+test.skipIf(!executable)('scripted OpenRouter-style provider sends the key and effort, reports priced cost and redacts the key', async () => {
   const root = await mkdtemp(join(tmpdir(), 'opentake-openrouter-'));
   const run = randomUUID(), capability = 'd'.repeat(64), key = 'sk-or-v1-' + 'f'.repeat(40);
   const requests: unknown[] = [], auth: string[] = [];
@@ -127,11 +127,12 @@ test.skipIf(!executable)('scripted OpenRouter-style provider sends the key, repo
   try {
     const execute = opencodeExecutor(async () => '', root, resolve(__dirname, '../../../out/main/earlybird-opentake-mcp.js'), { command: () => ({ executable: executable!, args: [] }) },
       { kind: 'compatible', providerID: 'openrouter', name: 'OpenRouter', baseUrl: async () => `http://127.0.0.1:${port(model)}/v1`, apiKey: async () => key,
-        model: async () => ({ value: 'x-ai/grok-4.7', label: 'Grok 4.7', pricing: { input: 2, output: 6 } }), missing: 'Connect OpenRouter in Settings.' });
-    await execute({ id: run, takeId: randomUUID(), gateway: { port: port(gateway), token: capability }, selection: { provider: 'openrouter', model: 'x-ai/grok-4.7' },
+        model: async () => ({ value: 'x-ai/grok-4.7', label: 'Grok 4.7', effortLevels: ['low', 'high'], pricing: { input: 2, output: 6 } }), missing: 'Connect OpenRouter in Settings.' });
+    await execute({ id: run, takeId: randomUUID(), gateway: { port: port(gateway), token: capability }, selection: { provider: 'openrouter', model: 'x-ai/grok-4.7', effort: 'high' },
       messages: [{ id: randomUUID(), parentId: null, role: 'user', text: 'Check the marker.', images: [], tools: [], createdAt: new Date().toISOString(), selection: { provider: 'openrouter', model: 'x-ai/grok-4.7' }, state: 'completed' }],
       instructions: 'Synthetic instructions.', signal: AbortSignal.timeout(45000), image: async () => '', text: (v: string) => output.push(v), tool: () => {}, replay: (v: unknown) => replay.push(v), audit: async (v: unknown) => { audit.push(v); } } as any);
     expect(auth.length).toBe(2); expect(auth.every(a => a === `Bearer ${key}`)).toBe(true);
+    expect(requests.map(r => (r as { reasoning_effort?: string }).reasoning_effort)).toEqual(['high', 'high']);
     const costs = audit.filter(e => e.kind === 'usage.recorded').map(e => e.payload.cost);
     // 40 input and 6 output tokens per step at $2 / $6 per million tokens.
     expect(costs).toEqual([0.000116, 0.000116]);

@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { AgentExecutor as TakeExecutor } from './take-runtime';
 import type { SecretStore } from './secret-store';
-import type { AiModel } from '../shared/ai-models';
+import { reasoningEfforts } from '../shared/ai-models';
+import type { AiModel, ReasoningEffort } from '../shared/ai-models';
 import { nativeHistory } from './native-chat-history';
 import { AdapterError, nativeCapture, protocolError, secretCleaner } from './native-chat-process';
 import { grokAcp, grokAgentProfile, grokInit, grokInitialize, withGrok, type GrokDependencies } from './grok-acp';
@@ -12,9 +13,27 @@ import { createRunBudget, runLimits } from './run-budget';
 import { auditToolResult, replayToolContent } from './tool-output';
 
 const object = z.record(z.string(), z.unknown());
+// Grok's selectable efforts when a model supports effort but lists none (grok-build session_config.rs).
+const grokDefaultEfforts: ReasoningEffort[] = ['minimal', 'low', 'medium', 'high', 'xhigh'];
+// Grok advertises effort in each model's `_meta`, and set_config_option takes an
+// option id. Keep only options whose id is the canonical level the slider sends.
+function grokEffortLevels(meta: Record<string, unknown> | null | undefined): ReasoningEffort[] {
+  if (meta?.supportsReasoningEffort !== true) return [];
+  const known = (value: unknown): value is ReasoningEffort => reasoningEfforts.some(level => level === value);
+  const options = Array.isArray(meta.reasoningEfforts) ? meta.reasoningEfforts.flatMap((option: unknown) => {
+    const entry = object.safeParse(option).data;
+    const value = typeof option === 'string' ? option : entry?.value;
+    return known(value) ? [{ id: typeof entry?.id === 'string' ? entry.id : value, value }] : [];
+  }) : [];
+  if (!options.length) return grokDefaultEfforts;
+  return reasoningEfforts.filter(level => options.some(option => option.id === level && option.value === level));
+}
 export function grokModels(value: unknown): AiModel[] {
-  const state = z.object({ availableModels: z.array(z.object({ modelId: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_./:[\]-]{0,199}$/), name: z.string(), description: z.string().nullish() })) }).parse(value);
-  return [...new Map(state.availableModels.map(m => [m.modelId, { value: m.modelId, label: m.name.slice(0, 160), description: m.description?.slice(0, 600), imageInput: false }])).values()];
+  const state = z.object({ availableModels: z.array(z.object({ modelId: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_./:[\]-]{0,199}$/), name: z.string(), description: z.string().nullish(), _meta: object.nullish() })) }).parse(value);
+  return [...new Map(state.availableModels.map((m): [string, AiModel] => {
+    const effortLevels = grokEffortLevels(m._meta);
+    return [m.modelId, { value: m.modelId, label: m.name.slice(0, 160), description: m.description?.slice(0, 600), imageInput: false, ...(effortLevels.length ? { effortLevels } : {}) }];
+  })).values()];
 }
 export class GrokModelDiscoveryError extends Error {}
 export async function discoverGrokModels(store: SecretStore, profile: string, deps: GrokDependencies = {}): Promise<AiModel[]> {
@@ -131,8 +150,12 @@ export function grokExecutor(store: SecretStore, profile: string, deps: GrokDepe
           const meta = { agentProfile: { ...grokAgentProfile, model: input.selection.model }, systemPromptOverride: input.instructions, 'x.ai/mcp/servers': [{ name: 'opentake', serverId }] };
           const session = z.object({ sessionId: z.string(), models: z.unknown() }).parse(await client.request('session/new', { cwd: home, mcpServers: [], _meta: meta }));
           sessionId = session.sessionId; client.session(sessionId);
-          if (!grokModels(session.models).some(m => m.value === input.selection.model)) throw new AdapterError('Grok model is unavailable. Refresh models and choose another model.');
+          const model = grokModels(session.models).find(m => m.value === input.selection.model);
+          if (!model) throw new AdapterError('Grok model is unavailable. Refresh models and choose another model.');
+          const effort = input.selection.effort;
+          if (effort && !model.effortLevels?.includes(effort)) throw new AdapterError('This thinking effort is unavailable. Choose Default or refresh models.');
           await client.request('session/set_model', { sessionId, modelId: input.selection.model });
+          if (effort) await client.request('session/set_config_option', { sessionId, configId: 'reasoning_effort', value: effort });
           await capture.audit('provider.lifecycle', { provider: 'grok', cliVersion: grokVersion, adapterVersion: '1' });
           await capture.audit('model.request', { boundary: 'acp', selection: input.selection, instructions: input.instructions, prompt, historyFormat: 'typed-context-v1' });
           prompting = true;

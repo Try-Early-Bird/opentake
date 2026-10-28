@@ -4,8 +4,9 @@ import { spawn } from 'node:child_process';
 import { mkdtemp, rm, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createModelDiscovery, discoverRuntimeModels, parseModels } from '../../src/main/ai-models';
+import { createModelDiscovery, discoverRuntimeModels, discoverZenEfforts, parseModels, parseOpenCodeVariants } from '../../src/main/ai-models';
 import type { SecretStore } from '../../src/main/secret-store';
+import type { ReasoningEffort } from '../../src/shared/ai-models';
 
 const store: SecretStore = { available: () => true, has: async () => true, get: async () => '{"token":"synthetic"}', set: async () => {}, delete: async () => {} };
 test('normalizes runtime and catalog models without hidden, duplicate or invalid entries', () => {
@@ -22,11 +23,32 @@ test('discovery uses connection status, caches results, refreshes and reports sa
   runtime.mockRejectedValueOnce(new Error('private provider detail'));
   expect(await models('claude', true)).toEqual({ ok: false, message: 'Could not load models. Check your connection and retry.' });
 });
-test('Zen models come from its catalog without sending credentials', async () => {
-  const request = vi.fn(async () => new Response(JSON.stringify({ data: [{ id: 'zen-model', name: 'Zen model' }] })));
-  const models = createModelDiscovery(store, '/unused', async () => [{ provider: 'opencode', status: 'connected' }], undefined, request as typeof fetch);
-  expect(await models('opencode')).toEqual({ ok: true, source: 'catalog', models: [{ value: 'zen-model', label: 'Zen model' }] });
+test('Zen models come from its catalog without sending credentials, with efforts from OpenCode', async () => {
+  const request = vi.fn(async () => new Response(JSON.stringify({ data: [{ id: 'zen-model', name: 'Zen model' }, { id: 'zen-plain', name: 'Plain', supportedEffortLevels: ['high'] }] })));
+  const zen = vi.fn(async () => new Map<string, ReasoningEffort[]>([['zen-model', ['low', 'high']]]));
+  const models = createModelDiscovery(store, '/unused', async () => [{ provider: 'opencode', status: 'connected' }], undefined, request as typeof fetch, undefined, undefined, zen);
+  expect(await models('opencode')).toEqual({ ok: true, source: 'catalog', models: [{ value: 'zen-model', label: 'Zen model', effortLevels: ['low', 'high'] }, { value: 'zen-plain', label: 'Plain' }] });
   expect(request.mock.calls[0][0]).toBe('https://opencode.ai/zen/v1/models');
+  zen.mockRejectedValueOnce(new Error('OpenCode missing'));
+  // Without OpenCode's variants the catalog still loads, without effort.
+  expect(await models('opencode', true)).toEqual({ ok: true, source: 'catalog', models: [{ value: 'zen-model', label: 'Zen model' }, { value: 'zen-plain', label: 'Plain' }] });
+});
+test('OpenCode variants map to effort levels in slider order', () => {
+  const block = (id: string, variants: object) => `opencode/${id}\n${JSON.stringify({ id, variants }, null, 2)}\n`;
+  expect(parseOpenCodeVariants(block('opus', { max: {}, low: {}, high: {}, custom: {} }) + block('glm', {}) + 'opencode/broken\n{nope\n' + block('gpt', { none: {}, xhigh: {} })))
+    .toEqual(new Map([['opus', ['low', 'high', 'max']], ['gpt', ['none', 'xhigh']]]));
+});
+test('Zen effort discovery lists OpenCode models in an isolated home', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'zen-effort-test-'));
+  const launch = ((_exe, args, options) => {
+    expect(args).toEqual(['models', 'opencode', '--verbose']); expect(options.env.HOME).toContain(root);
+    expect(JSON.parse(options.env.OPENCODE_CONFIG_CONTENT).enabled_providers).toEqual(['opencode']);
+    return spawn(process.execPath, ['-e', `console.log('opencode/m\\n' + JSON.stringify({ id: 'm', variants: { high: {} } }))`], options);
+  }) as typeof spawn;
+  try {
+    expect(await discoverZenEfforts(root, launch, () => ({ executable: process.execPath, args: [] }))).toEqual(new Map([['m', ['high']]]));
+    expect(await readdir(root)).toEqual([]);
+  } finally { await rm(root, { recursive: true, force: true }); }
 });
 test.each(['claude', 'chatgpt'] as const)('%s discovery only initializes and lists models in an isolated home', async provider => {
   const root = await mkdtemp(join(tmpdir(), 'model-discovery-test-'));
@@ -70,12 +92,12 @@ test('OpenRouter catalog keeps tool-capable text models with names, dates and pe
     { id: 'x-ai/grok-4.7', name: 'SpaceXAI: Grok 4.7', created: 1790007541, description: 'd', supported_parameters: ['tools', 'temperature'], architecture: { output_modalities: ['text'] }, pricing: { prompt: '0.000002', completion: '0.000006' } },
     { id: 'google/gemini-3.1-flash-image', name: 'Image only', supported_parameters: ['temperature'], pricing: { prompt: '0', completion: '0' } },
     { id: 'image/generator', name: 'Images out', supported_parameters: ['tools'], architecture: { output_modalities: ['image'] } },
-    { id: 'qwen/qwen3.8-27b:free', name: 'Qwen free', supported_parameters: ['tools'], pricing: { prompt: '0', completion: '0' } },
+    { id: 'qwen/qwen3.8-27b:free', name: 'Qwen free', supported_parameters: ['tools'], pricing: { prompt: '0', completion: '0' }, reasoning: { supported_efforts: ['max', 'high', 'low', 'future'] } },
     { id: 'bad id with spaces', supported_parameters: ['tools'] }, null,
   ]);
   expect(models).toEqual([
     { value: 'x-ai/grok-4.7', label: 'SpaceXAI: Grok 4.7', description: 'd', created: 1790007541, pricing: { input: 2, output: 6 } },
-    { value: 'qwen/qwen3.8-27b:free', label: 'Qwen free', pricing: { input: 0, output: 0 } },
+    { value: 'qwen/qwen3.8-27b:free', label: 'Qwen free', effortLevels: ['low', 'high', 'max'], pricing: { input: 0, output: 0 } },
   ]);
   expect(models.every(m => m.imageInput === undefined)).toBe(true);
 });
