@@ -17,10 +17,10 @@ function debuggingRefused(commandLine: Pick<typeof app.commandLine, 'hasSwitch'>
 }
 // Branding is independent of the existing profile and OS encryption identity.
 // Keep this stable until an explicit storage/keychain migration is implemented.
-if (app.isPackaged) {
-  app.setName('Earlybird OSS');
-  if (!app.commandLine.hasSwitch('user-data-dir')) app.setPath('userData', join(app.getPath('appData'), 'Earlybird OSS'));
-}
+// macOS safeStorage keys its keychain item by app name, so development builds
+// use the same name; otherwise they silently get a new key and saved credentials stop decrypting.
+app.setName('Earlybird OSS');
+if (app.isPackaged && !app.commandLine.hasSwitch('user-data-dir')) app.setPath('userData', join(app.getPath('appData'), 'Earlybird OSS'));
 if (!app.isPackaged && !app.commandLine.hasSwitch('user-data-dir')) {
   app.setPath('userData', join(app.getPath('appData'), 'earlybird-oss-development'));
 }
