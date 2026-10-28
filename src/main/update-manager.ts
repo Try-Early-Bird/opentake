@@ -16,6 +16,7 @@ export function createUpdateManager(deps: {
   let timer: ReturnType<typeof setInterval> | undefined;
   let initial: ReturnType<typeof setTimeout> | undefined;
   let operation = false;
+  let lastCheck = 0;
   const set = (patch: Partial<UpdateState>) => { state = { ...state, ...patch }; deps.changed({ ...state }); };
   const native = deps.native;
   if (native) {
@@ -37,7 +38,7 @@ export function createUpdateManager(deps: {
     if (typeof preview !== 'boolean') throw new Error('Invalid update channel');
     // Never replace metadata for a downloaded or in-flight update.
     if (operation || state.status === 'ready' || state.status === 'installing') return { ...state };
-    operation = true;
+    operation = true; lastCheck = Date.now();
     set({ status: 'checking', preview, version: undefined, percent: undefined, message: undefined });
     try {
       await deps.savePreview(preview);
@@ -60,9 +61,16 @@ export function createUpdateManager(deps: {
     start(preview: boolean, enabled: boolean) {
       set({ preview });
       if (!enabled || timer) return;
-      initial = setTimeout(() => { void check(); }, 30_000);
+      // Soon after the window opens, so a new release shows without visiting Settings.
+      initial = setTimeout(() => { void check(); }, 5_000);
       timer = setInterval(() => { void check(); }, 6 * 60 * 60 * 1000);
       initial.unref?.(); timer.unref?.();
+    },
+    /** Returning to the app checks again when the last check is over an hour old, so a window left open still sees a release that day. */
+    checkIfStale() {
+      // An offered update stays on screen; rechecking would hide its banner while checking.
+      if (!timer || state.status === 'available' || Date.now() - lastCheck < 60 * 60 * 1000) return;
+      void check();
     },
     stop() { clearTimeout(initial); clearInterval(timer); timer = undefined; },
     async download(): Promise<UpdateState> {

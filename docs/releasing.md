@@ -94,7 +94,8 @@ Automated tests cannot establish these; check them by hand on each architecture:
 
 ## Updates and recovery
 
-Packaged apps check for updates 30 seconds after launch and every six hours.
+Packaged apps check for updates 5 seconds after launch, every six hours, and when
+the window regains focus more than an hour after the last check.
 Nothing downloads or installs without the user's action, and installation waits
 for active chats, connection work, imports and trades. The background host
 drains work, closes the database and writes a shutdown receipt before the
