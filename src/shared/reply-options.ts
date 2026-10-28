@@ -12,7 +12,7 @@
  */
 export interface ReplyOptions { options: string[]; other?: string }
 
-export const replyFormat = 'When you end with a question that has a few likely answers, add one block at the very end of your reply: <replies>, then two to four <reply>answer</reply> lines of at most eight words each, worded as the user would say them, then optionally one <other>short invitation to answer differently</other>, then </replies>. Write nothing after it. The app shows these as reply buttons and hides the block.';
+export const replyFormat = 'When you end with a question that has a few likely answers, add one block at the very end of your reply: <replies>, then two to four <reply>answer</reply> lines of at most eight words each, worded as the user would say them, then preferably one <other>short invitation to answer differently</other>, then </replies>. Write nothing after it. The app shows these as reply buttons and hides the block.';
 
 const open = '<replies>';
 const clean = (value: string) => value.replace(/\s+/g, ' ').trim();
