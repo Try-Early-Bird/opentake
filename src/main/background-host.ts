@@ -150,6 +150,7 @@ import { startHostRpc } from './host-rpc';
 import { createDiagnostics } from './diagnostics';
 import { connectionFailure } from './connection-errors';
 import { callOpentakeTool } from './opentake-mcp/server';
+import { readTakesAccount } from './opentake-mcp/catalog';
 import icon from '../../resources/icon.png?asset';
 
 export function launchDesktop(profile: string) {
@@ -383,7 +384,7 @@ export function bootBackgroundHost(profile: string, build: string) {
     toolAccess:async(name,input)=>{if(!run)throw new Error('Run required');return name==='opentake_list_blocked_tools'?toolAccess.list(run):toolAccess.request(run,input);},
     status:async platform=>{if(platform==='coinbase')return coinbaseChat.status(run);const state=await connections.status();return {...state,accounts:state.accounts.filter(a=>a.selected&&a.agenticAllowed)};},
     stored:async(ref)=>{const state=await connections.status();const selected=state.accounts.find(a=>a.selected&&a.agenticAllowed);if(state.status!=='connected'||!selected||(ref&&ref!==selected.id))throw new Error('Account unavailable');const view=await portfolio.snapshot(selected.id);return {...view,accounts:view.accounts.filter(a=>a.id===selected.id)};},
-    read:async(platform,name,args,ref)=>{if(platform==='coinbase')return coinbaseChat.read(run,name,args,ref,signal);const state=await connections.status();const selected=state.accounts.find(a=>a.selected&&a.agenticAllowed);if(ref&&ref!==selected?.id)throw new Error('Account unavailable');return connections.readTool(name,args,selected?.id,signal);}
+    read:async(platform,name,args,ref)=>{if(platform==='coinbase')return coinbaseChat.read(run,name,args,ref,signal);const state=await connections.status();const selected=state.accounts.find(a=>a.selected&&a.agenticAllowed);if(ref&&ref!==selected?.id)throw new Error('Account unavailable');return connections.readTool(name,args,readTakesAccount(name)?selected?.id:undefined,signal);}
   },name,input), undefined, { openBrowser:url=>shell.openExternal(url), budget: id=>budgets.get(id), beforeBuiltin:run=>platformAccess.ensure(run) });
   // Chat can ask to turn a tool on; the member approves each request in the thread.
   const toolAccess=createToolAccess({list:()=>mcp.list(),policy:(server,name,value)=>mcp.policy(server,name,value),
