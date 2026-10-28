@@ -19,12 +19,27 @@ describe('update coordinator', () => {
     vi.useFakeTimers();
     const { manager, native } = fixture();
     manager.start(false, true);
-    await vi.advanceTimersByTimeAsync(29_999); expect(native.checkForUpdates).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(4_999); expect(native.checkForUpdates).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1); expect(manager.state().status).toBe('available');
     await vi.advanceTimersByTimeAsync(6 * 60 * 60 * 1000); expect(native.checkForUpdates).toHaveBeenCalledTimes(2);
     expect(native.autoDownload).toBe(false); expect(native.autoInstallOnAppQuit).toBe(false); expect(native.allowDowngrade).toBe(false);
     expect(native.downloadUpdate).not.toHaveBeenCalled(); expect(native.quitAndInstall).not.toHaveBeenCalled();
     manager.stop(); await vi.advanceTimersByTimeAsync(6 * 60 * 60 * 1000); expect(native.checkForUpdates).toHaveBeenCalledTimes(2);
+  });
+  it('checks again on returning to the app only when the last check is over an hour old and nothing is on offer', async () => {
+    vi.useFakeTimers();
+    const { manager, native } = fixture();
+    native.checkForUpdates.mockResolvedValue({ isUpdateAvailable: false, updateInfo: { version: '1.0.0' } });
+    manager.checkIfStale(); await vi.advanceTimersByTimeAsync(0); expect(native.checkForUpdates).not.toHaveBeenCalled();
+    manager.start(false, true); await vi.advanceTimersByTimeAsync(5_000); expect(native.checkForUpdates).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(59 * 60 * 1000); manager.checkIfStale(); await vi.advanceTimersByTimeAsync(0);
+    expect(native.checkForUpdates).toHaveBeenCalledTimes(1);
+    native.checkForUpdates.mockResolvedValue({ isUpdateAvailable: true, updateInfo: { version: '1.1.0' } });
+    await vi.advanceTimersByTimeAsync(60 * 1000); manager.checkIfStale(); await vi.advanceTimersByTimeAsync(0);
+    expect(native.checkForUpdates).toHaveBeenCalledTimes(2); expect(manager.state()).toMatchObject({ status: 'available', version: '1.1.0' });
+    await vi.advanceTimersByTimeAsync(2 * 60 * 60 * 1000); manager.checkIfStale(); await vi.advanceTimersByTimeAsync(0);
+    expect(native.checkForUpdates).toHaveBeenCalledTimes(2);
+    manager.stop();
   });
   it('disables background checks in development and persists channel changes', async () => {
     vi.useFakeTimers(); const { manager, native, deps } = fixture();

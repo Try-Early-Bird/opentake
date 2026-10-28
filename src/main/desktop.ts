@@ -295,6 +295,7 @@ export function bootDesktop(profile: string, build: string) {
     let preview = app.getVersion().includes('-');
     try { const saved = JSON.parse(await readFile(join(profile, 'update-preferences.json'), 'utf8')); if (typeof saved.preview === 'boolean') preview = saved.preview; } catch { /* First launch uses the installed channel. */ }
     updateManager.start(preview, app.isPackaged && !app.commandLine.hasSwitch('earlybird-test-no-secrets'));
+    app.on('browser-window-focus', () => updateManager.checkIfStale());
     let pinging = false;
     let missed = 0;
     // Liveness only: a host busy with the database (a sync after an order) answers
