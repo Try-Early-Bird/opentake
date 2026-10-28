@@ -51,7 +51,7 @@ export async function cryptoRpcReply(action:unknown,work:()=>Promise<CryptoOrder
  catch(caught){
   const error=caught instanceof CryptoReviewFailure?caught.failure:caught;
   let message:string|undefined;
-  if(error instanceof ConnectionFailure)message={reauth_required:'Sign in to Robinhood again in Connections.',storage_locked:'Unlock macOS Keychain or your system credential storage, then try again.',transient:'Robinhood is temporarily unavailable.',cancelled:'The crypto request was cancelled.',busy:'Robinhood is busy. Wait for the current request to finish.'}[error.code];
+  if(error instanceof ConnectionFailure)message={reauth_required:'Sign in to Robinhood again in Connections.',storage_locked:'Sign in to Robinhood again in Connections.',transient:'Robinhood is temporarily unavailable.',cancelled:'The crypto request was cancelled.',busy:'Robinhood is busy. Wait for the current request to finish.'}[error.code];
   else if(error instanceof RobinhoodReadFailure)message=error.publicMessage();
   else if(error instanceof CryptoPreviewPriceMismatch)message=error.publicMessage();
   else if(error instanceof ZodError)message='Robinhood crypto data could not be validated. Refresh the connection and try reviewing again.';

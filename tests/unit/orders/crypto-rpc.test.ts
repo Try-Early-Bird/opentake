@@ -20,7 +20,7 @@ test('crypto errors expose only approved text and never suggest resubmission aft
   const result=await cryptoRpcReply('confirm',async()=>{throw error;});
   expect(JSON.stringify(result)).not.toContain('synthetic-private-token');expect(result).toMatchObject({ok:false,message:expect.stringContaining('do not submit a replacement')});
  }
- expect(await cryptoRpcReply('review',async()=>{throw new ConnectionFailure('storage_locked');})).toMatchObject({ok:false,message:expect.stringContaining('Unlock')});
+ expect(await cryptoRpcReply('review',async()=>{throw new ConnectionFailure('storage_locked');})).toMatchObject({ok:false,message:expect.stringContaining('Sign in to Robinhood again')});
  expect(await cryptoRpcReply('review',async()=>({enabled:true,orders:[]}))).toEqual({ok:true,value:{enabled:true,orders:[]}});
 });
 

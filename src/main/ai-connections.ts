@@ -44,23 +44,25 @@ export function createAiConnections(store: SecretStore, factory: AiLoginFactory,
     if (active === previous) active = undefined;
     states.delete(previous.provider);
   }
+  // A saved sign-in this app can no longer read is fixed by signing in again, so say only that.
+  const signInAgain = (provider: AiProvider) => `Sign in to ${({ chatgpt: 'ChatGPT', claude: 'Claude', grok: 'Grok' } as const)[provider]} again to keep using it.`;
   async function status(): Promise<AiConnectionState[]> {
     return Promise.all(providers.map(async provider => {
       if (!installed(provider)) return { provider, installed: false, status: 'disconnected' as const, message: 'Not installed' };
       const state = states.get(provider);
       if (state && state.status !== 'connected') return { ...state };
       try {
-        if (!store.available()) return { provider, status: 'error' as const, message: 'Unlock OS secret storage to check AI connections.' };
+        if (!store.available()) return { provider, status: 'error' as const, message: signInAgain(provider) };
         const connected = await store.has(ref(provider));
         return { provider, installed: true, status: connected ? 'connected' as const : 'disconnected' as const };
-      } catch { return { provider, status: 'error' as const, message: 'Could not read this AI connection. Unlock OS secret storage or reconnect.' }; }
+      } catch { return { provider, status: 'error' as const, message: signInAgain(provider) }; }
     }));
   }
   return {
     status,
     async disconnect(value: unknown) {
       const provider = parseAiProvider(value);
-      if (!store.available()) throw new Error('Unlock OS secret storage before disconnecting AI.');
+      if (!store.available()) throw new Error('Could not disconnect right now. Try again.');
       if (active?.provider === provider) await cancel();
       await store.delete(ref(provider));
       states.delete(provider);
@@ -69,7 +71,7 @@ export function createAiConnections(store: SecretStore, factory: AiLoginFactory,
       const provider = parseAiProvider(value);
       if (!installed(provider)) return { provider, installed: false, status: 'error', message: 'Not installed. Install the CLI and check again.' };
       if (active) throw new Error('Another AI sign-in is in progress');
-      if (!store.available()) return { provider, status: 'error', message: 'Unlock OS secret storage before connecting AI.' };
+      if (!store.available()) return { provider, status: 'error', message: 'Could not save your sign-in. Try connecting again.' };
       const entry = { provider, cancelled: false, login: undefined as AiLogin | undefined, work: Promise.resolve() };
       active = entry;
       states.set(provider, { provider, status: 'starting' });

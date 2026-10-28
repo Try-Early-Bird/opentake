@@ -31,7 +31,7 @@ export function createSettingsService(database: ReturnType<typeof createDatabase
   async function credentialOperation(event: SettingsContext, operation: () => Promise<CredentialMetadata[]>): Promise<CredentialResult> {
     owner(event);
     try { return { ok: true, items: await operation() }; }
-    catch { return { ok: false, message: 'Could not access or update credentials. Check OS secret storage, unique names, and inventory limits. Existing data has not been reset.' }; }
+    catch { return { ok: false, message: 'Could not update credentials. Check that the name is unique and try again. Existing data has not been reset.' }; }
   }
   ipcMain.handle('settings:search:get', event => { owner(event); return searchSettings.read(); });
   ipcMain.handle('settings:search:set', (event, value: unknown) => { owner(event); return searchSettings.save(value); });

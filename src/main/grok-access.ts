@@ -36,7 +36,7 @@ export function createGrokAccess(store: SecretStore, root: string, deps: Depende
   async function run(abort: AbortController): Promise<GrokAccessResult> {
     let home: string | undefined, credential: string | null = null;
     try {
-      if (!store.available()) return failed('Unlock OS secret storage before testing Grok.');
+      if (!store.available()) return failed('Sign in to Grok again to keep using it.');
       credential = await store.get(grokSecretRef);
       if (!credential) return failed('Connect Grok first.');
       validateGrokCredential(credential);
@@ -83,7 +83,7 @@ export function createGrokAccess(store: SecretStore, root: string, deps: Depende
       }
       return result;
     } catch {
-      return failed('Grok access could not be verified. Check that Grok CLI 1.0.46 is installed, unlock OS storage, or reconnect.');
+      return failed('Grok access could not be verified. Check that Grok CLI 1.0.46 is installed, or sign in to Grok again.');
     } finally {
       credential = null;
       if (home) await rm(home, { recursive: true, force: true });
