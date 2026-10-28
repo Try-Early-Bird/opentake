@@ -558,5 +558,10 @@
     "version": 112,
     "name": "Tool access requests decided after the reply",
     "checksum": "33e7ca7560df54f62e5e06a237aed2ff31ba752f44393a7bd5de848cc003dad8"
+  },
+  {
+    "version": 113,
+    "name": "Tool access requests record the setting granted",
+    "checksum": "fc223c125310de9150c7db2ba110a765b552caf9b1d552b4836677c0d049d1ce"
   }
 ]

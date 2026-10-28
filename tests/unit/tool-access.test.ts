@@ -18,7 +18,8 @@ async function fixture(take:TakeToolPermission[]=[]){
  const servers:ManagedServer[]=[{id:builtin,policy:'allowed',enabled:true,revision:1,config:{name:'Opentake platforms'} as never},{id:external,policy:'blocked',enabled:true,revision:1,config:{name:'Notes'} as never}];
  const tool=(server_id:string,name:string,policy:ToolPolicy):ManagedTool=>({server_id,name,policy,fingerprint:'f',definition:{name,description:`${name} description`,inputSchema:{}}});
  const changed:ManagedTool={...tool(external,'notes_send','blocked'),blocked_reason:'changed',previous_definition:{name:'notes_send',inputSchema:{properties:{}}},definition:{name:'notes_send',inputSchema:{properties:{to:{type:'string'}}}}};
- const tools=[changed,tool(builtin,'coinbase_products_ticker','blocked'),tool(builtin,'opentake_propose_rules','ask'),tool(builtin,'opentake_read_rules','allowed'),tool(builtin,'opentake_request_tool_access','allowed'),tool(external,'notes_search','allowed')];
+ const ticker={...tool(builtin,'coinbase_products_ticker','blocked'),definition:{name:'coinbase_products_ticker',inputSchema:{},annotations:{readOnlyHint:true}}};
+ const tools=[changed,ticker,tool(builtin,'opentake_propose_rules','ask'),tool(builtin,'opentake_read_rules','allowed'),tool(builtin,'opentake_request_tool_access','allowed'),tool(external,'notes_search','allowed')];
  const changes:[string,string,ToolPolicy][]=[];let live=true;
  const access=createToolAccess({list:async()=>({servers,tools}),policy:async(s,n,p)=>{changes.push([s,n,p]);tools.find(t=>t.server_id===s&&t.name===n)!.policy=p;},take:async()=>({takeId,permissions:take}),
   use:work=>work(db as never),active:()=>live});
@@ -40,10 +41,10 @@ test('a request is filed on the reply and changes nothing until the member appro
  expect(await access.forMessage(message)).toEqual([expect.objectContaining({id:filed.requestId,toolName:'coinbase_products_ticker',policy:'ask',status:'pending',server:'Opentake platforms'})]);
  // The reply has ended; the member still decides.
  stop();
- expect(await access.decide(filed.requestId,true)).toMatchObject({changed:true,from:'blocked',to:'ask'});
+ expect(await access.decide(filed.requestId,'ask')).toMatchObject({changed:true,from:'blocked',to:'ask'});
  expect(changes).toEqual([[builtin,'coinbase_products_ticker','ask']]);
- expect((await access.forMessage(message))[0].status).toBe('approved');
- await expect(access.decide(filed.requestId,true)).rejects.toThrow('already answered');
+ expect((await access.forMessage(message))[0]).toMatchObject({status:'approved',granted:'ask',readOnly:true});
+ await expect(access.decide(filed.requestId,'ask')).rejects.toThrow('already answered');
 });
 
 test('declining changes nothing, and a newer request for the same tool replaces the open one',async()=>{
@@ -51,9 +52,9 @@ test('declining changes nothing, and a newer request for the same tool replaces 
  const first=await access.file(run,ask('coinbase_products_ticker')) as {requestId:string};
  const second=await access.file(run,ask('coinbase_products_ticker','allowed')) as {requestId:string};
  expect((await access.forMessage(message)).map(r=>[r.id,r.status])).toEqual([[first.requestId,'superseded'],[second.requestId,'pending']]);
- await expect(access.decide(first.requestId,true)).rejects.toThrow('already answered');
- await access.decide(second.requestId,false);expect(changes).toEqual([]);
- expect((await access.forMessage(message))[1].status).toBe('declined');
+ await expect(access.decide(first.requestId,'allowed')).rejects.toThrow('already answered');
+ await access.decide(second.requestId,'decline');expect(changes).toEqual([]);
+ expect((await access.forMessage(message))[1]).toMatchObject({status:'declined',granted:null});
 });
 
 test('requests never narrow, cannot touch servers or the request tool, and need a live reply',async()=>{
@@ -66,11 +67,24 @@ test('requests never narrow, cannot touch servers or the request tool, and need 
  stop();await expect(access.file(run,ask('coinbase_products_ticker'))).rejects.toThrow('Response stopped');
 });
 
+test('keep asking turns the tool on but still asks, and an answer never opens it wider than chat asked',async()=>{
+ const kept=await fixture();
+ const wide=await kept.access.file(kept.run,ask('coinbase_products_ticker','allowed')) as {requestId:string};
+ expect(await kept.access.decide(wide.requestId,'ask')).toMatchObject({changed:true,to:'ask'});
+ expect((await kept.access.forMessage(kept.message))[0]).toMatchObject({policy:'allowed',granted:'ask',status:'approved'});
+ expect(kept.changes).toEqual([[builtin,'coinbase_products_ticker','ask']]);
+ const capped=await fixture();
+ const narrow=await capped.access.file(capped.run,ask('coinbase_products_ticker','ask')) as {requestId:string};
+ await expect(capped.access.decide(narrow.requestId,'maybe')).rejects.toThrow();
+ expect(await capped.access.decide(narrow.requestId,'allowed')).toMatchObject({changed:true,to:'ask'});
+ expect((await capped.access.forMessage(capped.message))[0].granted).toBe('ask');
+});
+
 test('approving rechecks the tools as they are then',async()=>{
  const {access,changes,tools,run}=await fixture();
  const filed=await access.file(run,ask('coinbase_products_ticker')) as {requestId:string};
  tools.find(t=>t.name==='coinbase_products_ticker')!.policy='allowed';
- expect(await access.decide(filed.requestId,true)).toMatchObject({changed:false});expect(changes).toEqual([]);
+ expect(await access.decide(filed.requestId,'ask')).toMatchObject({changed:false});expect(changes).toEqual([]);
 });
 
 test('a Take restriction stays and is reported to chat',async()=>{

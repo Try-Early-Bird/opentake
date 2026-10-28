@@ -746,7 +746,7 @@ export function bootBackgroundHost(profile: string, build: string) {
       if(method==='gateway:list') return mcp.catalog(String(args[0]));
       if(method==='gateway:call') return mcp.call(String(args[0]),String(args[1]),args[2]);
       // The member's answer to chat's tool request; its own reasons are shown, nothing else.
-      if(method==='mcp:tool-access-decide'){try{return await toolAccess.decide(z.uuid().parse(args[0]),z.boolean().parse(args[1]));}catch(error){return {error:error instanceof ToolAccessError?error.message:'Could not save your answer. Try again.'};}}
+      if(method==='mcp:tool-access-decide'){try{return await toolAccess.decide(z.uuid().parse(args[0]),args[1]);}catch(error){return {error:error instanceof ToolAccessError?error.message:'Could not save your answer. Try again.'};}}
       if(method.startsWith('mcp:')) { try {
         if(method==='mcp:platform-settings')return await platformAccess.settings();
         if(method==='mcp:platform-configure')return await platformAccess.configure(args[0]);
