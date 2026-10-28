@@ -608,7 +608,9 @@ export function bootBackgroundHost(profile: string, build: string) {
   process.on('SIGINT', () => void shutdown()); process.on('SIGTERM', () => void shutdown());
   process.on('uncaughtException', () => { diagnostics.record('app.fatal'); void shutdown(); });
   process.on('unhandledRejection', () => { diagnostics.record('app.fatal'); void shutdown(); });
-  app.on('activate', () => { if (ready && !quitting) launchDesktop(profile); });
+  // Reopening Opentake while only the host runs activates the host, and macOS then shows its
+  // Dock icon beside the new window's. The host has no windows, so hide it again.
+  app.on('activate', () => { if (ready && !quitting) launchDesktop(profile); app.dock?.hide(); });
   void app.whenReady().then(async () => {
     app.dock?.hide(); await privateDirectory(profile); await database.start(); const streamSource=await coinbaseSourceSettings.load();coinbaseStream.configure({revision:streamSource.revision,enabled:streamSource.enabled,collection:streamSource.config.collection,subscriptions:streamSource.config.provider!.subscriptions,priceMappings:streamSource.config.provider!.priceMappings}); await dataSources.start(); await coinbaseExecution.start(); await coinbasePortfolio.start(); await takes.start(); await mcp.start(); await platformAccess.start();
     diagnostics.record('database.ready'); if (quitting) return; await cryptoDustPolicy.load(); coinbaseHoldings.start(); streamPriceWriter.start(); valuationSnapshots.start(); ruleRunner.start();
