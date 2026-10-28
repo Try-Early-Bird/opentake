@@ -301,7 +301,8 @@ test('basket tools default allowed, honor Ask and Blocked, and cannot escape the
   await f.db.query("UPDATE take_runs SET configuration=jsonb_set(configuration,'{tools}',$2::jsonb) WHERE id=$1",[f.run,JSON.stringify(snapshot)]);
   expect((await f.service.call(f.run,name,input)).isError).not.toBe(true);expect(f.builtinCall).toHaveBeenCalledTimes(1);expect(f.builtinCall.mock.calls[0][3]).toBe(f.run);
   await f.db.query(`UPDATE take_runs SET configuration=jsonb_set(configuration,'{permissionMode}','"ask"') WHERE id=$1`,[f.run]);
-  const pending=f.service.call(f.run,name,input);const request=await approval(f);expect(f.builtinCall).toHaveBeenCalledTimes(1);await f.service.decide(request.id,true);expect((await pending).isError).not.toBe(true);expect(f.builtinCall).toHaveBeenCalledTimes(2);
+  // Asking first means "don't change my draft": the proposal is filed as a suggestion without waiting.
+  expect((await f.service.call(f.run,name,input)).isError).not.toBe(true);expect(await f.service.approvals()).toEqual([]);expect(f.builtinCall).toHaveBeenCalledTimes(2);expect(f.builtinCall.mock.calls[1][4]).toEqual({suggest:true});
   await f.service.policy(builtin,name,'blocked');expect((await f.service.call(f.run,name,input)).isError).toBe(true);expect(f.builtinCall).toHaveBeenCalledTimes(2);
   await f.service.policy(builtin,name,'allowed');await f.db.query("UPDATE take_runs SET configuration=jsonb_set(configuration,'{tools}',$2::jsonb) WHERE id=$1",[f.run,JSON.stringify(snapshot.filter(t=>t.name!==name))]);expect((await f.service.call(f.run,name,input)).isError).toBe(true);expect(f.builtinCall).toHaveBeenCalledTimes(2);
  }finally{await f.close();}
@@ -319,20 +320,20 @@ test('an app update that changes a built-in tool keeps its permission, and new b
  }finally{await f.close();}
 });
 
-test('asking to turn on a tool always waits for the member, even when that tool is set to Allowed, and never in an automatic run',async()=>{
+test('chat files a request to turn on a tool, or a rule proposal set to Ask, without waiting; an automatic run never can',async()=>{
  const f=await fixture();const builtin='00000000-0000-4000-8000-000000000001',name='opentake_request_tool_access';
  const input={serverId:builtin,name:'coinbase_products_ticker',policy:'ask',reason:'To read the BTC price.'};
  try{
-  const snapshot=await f.service.policySnapshot(f.take);expect(snapshot.find(t=>t.name===name)?.policy).toBe('allowed');
+  await f.service.policy(builtin,name,'ask');await f.service.policy(builtin,'opentake_propose_rules','ask');
+  const snapshot=await f.service.policySnapshot(f.take);
   await f.db.query("UPDATE take_runs SET configuration=jsonb_set(configuration,'{tools}',$2::jsonb) WHERE id=$1",[f.run,JSON.stringify(snapshot)]);
-  const declined=f.service.call(f.run,name,input);await f.service.decide((await approval(f)).id,false);
-  expect((await declined).isError).toBe(true);expect(f.builtinCall).not.toHaveBeenCalled();
-  // A decline is recorded as declined, not expired.
-  expect((await f.service.history({takeId:f.take})).items[0]).toMatchObject({tool_name:name,state:'declined'});
-  const approved=f.service.call(f.run,name,input);await f.service.decide((await approval(f)).id,true);
-  expect((await approved).isError).not.toBe(true);expect(f.builtinCall).toHaveBeenCalledTimes(1);
+  // Filed on the reply for the member to decide later, even with the tool itself set to Ask.
+  expect((await f.service.call(f.run,name,input)).isError).not.toBe(true);expect(await f.service.approvals()).toEqual([]);expect(f.builtinCall).toHaveBeenCalledTimes(1);
+  // A rule proposal is accepted later in Rules, so Ask does not hold the reply either.
+  const rules={operationId:randomUUID(),expectedRevision:0,expectedVersion:randomUUID(),expectedInputRevision:0,config:{schemaVersion:1,rules:[]},inputs:{inputs:[],maxSkewMs:5000}};
+  expect((await f.service.call(f.run,'opentake_propose_rules',rules)).isError).not.toBe(true);expect(await f.service.approvals()).toEqual([]);expect(f.builtinCall).toHaveBeenCalledTimes(2);
   await f.db.query(`UPDATE take_runs SET configuration=configuration||'{"unattended":true}'::jsonb WHERE id=$1`,[f.run]);
-  expect((await f.service.call(f.run,name,input)).isError).toBe(true);expect(f.builtinCall).toHaveBeenCalledTimes(1);
+  const refused=await f.service.call(f.run,name,input);expect(refused.isError).toBe(true);expect(JSON.stringify(refused)).toContain('cannot ask for approval');expect(f.builtinCall).toHaveBeenCalledTimes(2);
  }finally{await f.close();}
 });
 
@@ -382,9 +383,11 @@ test('an automatic run files a proposal set to Ask without waiting; any other As
   const filed=await f.service.call(f.run,name,input);expect(filed.isError).not.toBe(true);expect(f.builtinCall).toHaveBeenCalledTimes(1);expect(await f.service.approvals()).toEqual([]);
   const other=await f.service.call(f.run,'opentake_list_accounts',{platform:'coinbase'});
   expect(other.isError).toBe(true);expect(JSON.stringify(other)).toContain('cannot ask for approval');expect(f.builtinCall).toHaveBeenCalledTimes(1);
-  // In a chat run (someone watching) the proposal still asks.
+  // In a chat run (someone watching) the proposal is filed as a suggestion instead of waiting; other Ask tools still wait.
   await f.db.query(`UPDATE take_runs SET configuration=configuration-'unattended' WHERE id=$1`,[f.run]);
-  const asked=f.service.call(f.run,name,{...input,operationId:randomUUID()});expect((await approval(f)).tool_name).toBe(name);
+  expect((await f.service.call(f.run,name,{...input,operationId:randomUUID()})).isError).not.toBe(true);
+  expect(await f.service.approvals()).toEqual([]);expect(f.builtinCall).toHaveBeenCalledTimes(2);expect(f.builtinCall.mock.calls[1][4]).toEqual({suggest:true});
+  const asked=f.service.call(f.run,'opentake_list_accounts',{platform:'coinbase'});expect((await approval(f)).tool_name).toBe('opentake_list_accounts');
   await f.service.decide((await approval(f)).id,false);expect((await asked).isError).toBe(true);
  }finally{await f.close();}
 });

@@ -15,6 +15,7 @@ import type { ModelProvider, ModelResult } from '../../../../shared/ai-models';
 import type { Take, TakeMessage, ToolActivity } from '../../../../shared/takes';
 import { visibleMessages } from '../../../../shared/takes';
 import { ReferenceImage } from './ReferenceImage';
+import { ToolAccessCards } from './ToolAccessCards';
 import { splitReplies, type ReplyOptions } from '../../../../shared/reply-options';
 const streaming=(m:TakeMessage)=>m.state==='running'||m.state==='starting';
 /** What the member reads: an assistant reply without its reply-button block. */
@@ -62,13 +63,13 @@ function ReplyButtons({replies,picked,disabled,onChoose,onOther,children}:{repli
   {children}
  </div>;
 }
-/** Which account a reply used, and whether older turns were condensed for it. */
 /** The reply button your message picked from the reply before it, when it is exactly one of them. */
 function pickedOption(reply:TakeMessage|undefined,answer:TakeMessage|undefined):string|null{
  if(reply?.role!=='assistant'||answer?.role!=='user'||reply.state!=='completed'||reply.imported||answer.imported||answer.ruleRun||answer.images.length||answer.documents?.length)return null;
  const text=answer.text.trim();
  return splitReplies(reply.text).replies?.options.includes(text)?text:null;
 }
+/** Which account a reply used, and whether older turns were condensed for it. */
 function ReplyContext({message}:{message:TakeMessage}){
  const [open,setOpen]=useState(false);const condensed=message.context?.condensedMessages;
  return <div className="text-xs text-muted-foreground"><p className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -108,9 +109,9 @@ export function Conversation({take,catalogs,running,onSend,onBranch,onError,onRe
   const attachments=<>{!!message.documents?.length&&<div className="flex flex-wrap justify-end gap-2">{message.documents.map(doc=><ReferenceDocument key={doc.id} document={doc}/>)}</div>}
    {!!message.images.length&&<div className="flex flex-wrap justify-end gap-2">{message.images.map(image=><ReferenceImage key={image.id} image={image}/>)}</div>}</>;
   const divider=importStart&&<p className="flex items-center gap-3 text-xs text-muted-foreground before:h-px before:flex-1 before:bg-border after:h-px after:flex-1 after:bg-border">Imported · exported {new Date(message.imported!.exportedAt).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'})}</p>;
-  if(message.role==='user')return <>{divider}<MessagePrimitive.Root data-message-id={message.id} aria-label="Your message" className="ml-auto flex min-w-0 max-w-[85%] flex-col items-end gap-2 [overflow-wrap:anywhere]">
   // Shown as the highlighted button on the reply before it.
   if(message.role==='user'&&pickedOption(messages[index-1],message))return null;
+  if(message.role==='user')return <>{divider}<MessagePrimitive.Root data-message-id={message.id} aria-label="Your message" className="ml-auto flex min-w-0 max-w-[85%] flex-col items-end gap-2 [overflow-wrap:anywhere]">
    {attachments}
    {editing===message.id?<form className="w-full min-w-[min(28rem,100%)]" onSubmit={e=>{e.preventDefault();void onSend(edit,message.parentId,message.images.map(i=>i.id),false,message.documents?.map(d=>d.id)??[],true).then(()=>setEditing(undefined)).catch(e=>onError(String(e.message)));}}>
     <textarea autoFocus aria-label="Edit message" rows={3} className="w-full resize-y rounded-2xl border border-border bg-muted px-4 py-3 text-sm leading-6 outline-none focus-visible:ring-1 focus-visible:ring-ring" value={edit} onChange={e=>setEdit(e.target.value)}/>
@@ -135,6 +136,7 @@ export function Conversation({take,catalogs,running,onSend,onBranch,onError,onRe
   {(message.state==='cancelled'||message.state==='interrupted')&&<p role="status" className="flex flex-wrap items-center gap-x-2.5 text-sm text-muted-foreground"><StatusDot tone="muted"/>{message.state==='cancelled'?'You stopped this reply':'Interrupted when the app closed'}{!!message.text&&<><span aria-hidden="true">·</span><button type="button" disabled={running} onClick={()=>void onSend(continuePrompt,message.id,[],false,[],true).catch(e=>onError(e.message))} className="hover:text-foreground disabled:opacity-40">Continue</button></>}</p>}
   {message.state==='failed'&&<div className="flex items-center gap-4"><button type="button" disabled={running} onClick={()=>void onSend('',message.parentId,[],true,[],true).catch(e=>onError(e.message))} className="rounded-full bg-foreground px-4 py-1.5 text-xs font-medium text-background disabled:opacity-40">Retry</button>{message.stopReason==='budget'&&<Link to="/settings" search={{section:'ai-settings'}} className="text-xs text-muted-foreground hover:text-foreground">Raise the limit</Link>}</div>}
   <RuleProposalCards messageId={message.id} running={active}/>
+  <ToolAccessCards messageId={message.id} running={active}/>
   <ProposalCards messageId={message.id} running={active} onReview={onReviewBasket}/>
   <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
    {copy}

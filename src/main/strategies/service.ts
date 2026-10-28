@@ -191,12 +191,16 @@ export function createStrategies(database:Database,options:{active:(run:string)=
    (v.source_proposal_id IS DISTINCT FROM s.draft_revision_id) AS dirty,s.archived_at::text AS "archivedAt" FROM strategies s JOIN takes t ON t.strategy_id=s.id
    JOIN strategy_proposals p ON p.id=s.draft_revision_id LEFT JOIN strategy_versions v ON v.id=s.current_version_id WHERE s.owner_id=(SELECT id FROM local_owners LIMIT 1) AND (s.archived_at IS NOT NULL)=$1 ORDER BY s.updated_at DESC`,[z.boolean().parse(archived)])).rows);},
   async propose(input:unknown){try{const result=await propose(input,{human:true});options.changed?.();return result;}catch(e){if(e instanceof BasketConflict)return conflict();throw e;}},
-  async agentPropose(runId:string,input:unknown){
+  /** `call.suggest`: the member asks before chat changes their draft, so an existing draft is left as it is. */
+  async agentPropose(runId:string,input:unknown,call?:{suggest?:boolean}){
    try{
     // An automatic rule run (no one watching) suggests; the member's draft stays as it is.
     const unattended=!!(await database.use(db=>db.query<{unattended:boolean}>("SELECT coalesce((configuration->>'unattended')::boolean,false) AS unattended FROM take_runs WHERE id=$1",[runId]))).rows[0]?.unattended;
-    const result=await propose(input,{runId},undefined,unattended);if(!result.ok)return result;
+    // A take with no draft yet has nothing to keep, so its first proposal becomes the draft.
+    const chatSuggestion=!unattended&&!!call?.suggest&&proposalInputSchema.parse(input).expectedRevision!==null;
+    const result=await propose(input,{runId},undefined,unattended||chatSuggestion);if(!result.ok)return result;
     if(unattended)return {ok:true,proposalId:result.proposalId,suggested:true,note:'Saved as a suggestion for the member to review; the Take and its draft are unchanged until they apply it.'};
+    if(chatSuggestion){options.changed?.();return {ok:true,proposalId:result.proposalId,suggested:true,note:'Saved as a suggestion on this reply. The member asked to review changes first, so their draft is unchanged until they apply it from the proposal card. Say so; do not say the draft was updated.'};}
     // Verification may introduce account context. Apply the same gate on response.
     options.changed?.();return {ok:true,proposalId:result.proposalId,...await agentRead(runId,result.view.targetTakeId)};
    }catch(e){if(e instanceof BasketConflict){const parsed=proposalInputSchema.parse(input);return {...conflict(),current:await agentRead(runId,parsed.targetTakeId)};}throw e;}

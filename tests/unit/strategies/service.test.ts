@@ -165,6 +165,20 @@ test('the AI reads recent messages bounded: newest kept, long ones cut and marke
  expect(read.olderOmitted).toBe(40-read.items.length);
  expect(recentMessages([{id:'a',role:'user',text:'hi'}])).toEqual({items:[{id:'a',role:'user',text:'hi'}]});
 });
+test('a chat proposal the member asks to review is saved beside their draft, except as a new take\'s first draft',async()=>{
+ const f=await fixture(),t=await f.take(),run=await f.run(t);
+ // No draft yet: nothing to keep, so the first proposal becomes the draft without waiting for anyone.
+ const first=input(t);first.metadata.title='First draft';
+ expect(await f.service.agentPropose(run.id,first,{suggest:true})).not.toHaveProperty('suggested');
+ const view=(await f.service.read(t))!;expect(view.draft.metadata.title).toBe('First draft');
+ const next=input(t,view);next.metadata.title='Chat suggestion';
+ const result=await f.service.agentPropose(run.id,next,{suggest:true}) as {ok:boolean;suggested?:boolean;proposalId?:string;note?:string};
+ expect(result).toMatchObject({ok:true,suggested:true});expect(result.note).toContain('draft is unchanged');
+ expect((await f.service.read(t))!.draft.metadata.title).toBe('First draft');
+ // It stays in the take until the member applies it; nothing expires.
+ const applied=ok(await f.service.useRevision({...action((await f.service.read(t))!),proposalId:result.proposalId!}));
+ expect(applied.view.draft.metadata.title).toBe('Chat suggestion');
+});
 test('an automatic rule run suggests a Take change without touching the draft; the member applies or dismisses it',async()=>{
  const f=await fixture(),t=await f.take();
  const committed=ok(await f.service.commit(action(ok(await f.service.propose(input(t))).view)));

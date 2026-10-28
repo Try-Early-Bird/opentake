@@ -87,7 +87,7 @@ import {createAllocationCore} from './allocations/service';
 import {createAttributionSweep} from './allocations/attribution-sweep';
 import {createOrderWriter} from './orders/service';
 import {summarizeInvestment} from './execution/investment-summary';
-import {createToolAccess} from './tool-access';
+import {createToolAccess,ToolAccessError} from './tool-access';
 import {createRuleTargetSuggestions} from './strategies/rule-target-suggestions';
 import {createRobinhoodRuleTrades} from './strategies/robinhood-rule-trades';
 import {createRuleTradeApprovals} from './strategies/rule-trade-approvals';
@@ -367,13 +367,13 @@ export function bootBackgroundHost(profile: string, build: string) {
   const ruleProposals=createRuleProposals(database,activeRun,tradingEnabled);
   const takeInputChat=createTakeInputChat(database,takeInputs.snapshot,activeRun);
   const takeOverview=createTakeOverview(strategies,coinbaseCapital);
-  const mcp = createMcpManagement(database,secrets,join(profile,'mcp-temporary'),activeRun,async (name,input,signal,run)=>callOpentakeTool({
+  const mcp = createMcpManagement(database,secrets,join(profile,'mcp-temporary'),activeRun,async (name,input,signal,run,call)=>callOpentakeTool({
     dataSourceList:async()=>{if(!run)throw Error('Run required');return sourceChat.list(run);},
     dataSourceRead:async input=>{if(!run)throw Error('Run required');return sourceChat.read(run,input);},
     rules:async(name,input)=>{if(!run)throw Error('Run required');await platformAccess.ensure(run);return name==='opentake_read_rules'?ruleProposals.agentRead(run):name==='opentake_read_rule_activity'?ruleProposals.agentActivity(run,input):name==='opentake_request_trade'?ruleAgents.requestTrade(run,input):ruleProposals.propose(run,input);},
     takeInputs:async()=>{if(!run)throw Error('Run required');return takeInputChat(run);},
     documents:async(input)=>{if(!run)throw new Error('Run required');return documents.tool(run,input,signal);},
-    strategy:async(name,input)=>{if(!run)throw new Error('Run required');return name==='opentake_propose_strategy'?strategies.agentPropose(run,input):strategies.agentRead(run,z.object({targetTakeId:z.uuid().optional()}).strict().parse(input).targetTakeId);},
+    strategy:async(name,input)=>{if(!run)throw new Error('Run required');return name==='opentake_propose_strategy'?strategies.agentPropose(run,input,call):strategies.agentRead(run,z.object({targetTakeId:z.uuid().optional()}).strict().parse(input).targetTakeId);},
     // Read-only: the take's strategy and the member's money in it, after the same access checks as reading the strategy.
     watchlists:input=>watchlists.agentRead(input),
     investment:async(input)=>{if(!run)throw new Error('Run required');const read=await strategies.agentRead(run,z.object({targetTakeId:z.uuid().optional()}).strict().parse(input).targetTakeId) as {targetTakeId:string;basket?:{strategyId:string}|null};
@@ -381,13 +381,13 @@ export function bootBackgroundHost(profile: string, build: string) {
       return summarizeInvestment({holdings:()=>allocationInstructions.holdings(),instructions:id=>allocationInstructions.instructions(id),performance:(id,range,basis)=>strategyPerformance.performance(id,range,basis),
        // A Take without a Coinbase account or allocation has nothing there to read.
        coinbase:()=>coinbaseCapital.view(read.targetTakeId).catch(()=>null)},read.basket.strategyId);},
-    toolAccess:async(name,input)=>{if(!run)throw new Error('Run required');return name==='opentake_list_blocked_tools'?toolAccess.list(run):toolAccess.request(run,input);},
+    toolAccess:async(name,input)=>{if(!run)throw new Error('Run required');return name==='opentake_list_blocked_tools'?toolAccess.list(run):toolAccess.file(run,input);},
     status:async platform=>{if(platform==='coinbase')return coinbaseChat.status(run);const state=await connections.status();return {...state,accounts:state.accounts.filter(a=>a.selected&&a.agenticAllowed)};},
     stored:async(ref)=>{const state=await connections.status();const selected=state.accounts.find(a=>a.selected&&a.agenticAllowed);if(state.status!=='connected'||!selected||(ref&&ref!==selected.id))throw new Error('Account unavailable');const view=await portfolio.snapshot(selected.id);return {...view,accounts:view.accounts.filter(a=>a.id===selected.id)};},
     read:async(platform,name,args,ref)=>{if(platform==='coinbase')return coinbaseChat.read(run,name,args,ref,signal);const state=await connections.status();const selected=state.accounts.find(a=>a.selected&&a.agenticAllowed);if(ref&&ref!==selected?.id)throw new Error('Account unavailable');return connections.readTool(name,args,readTakesAccount(name)?selected?.id:undefined,signal);}
   },name,input), undefined, { openBrowser:url=>shell.openExternal(url), budget: id=>budgets.get(id), beforeBuiltin:run=>platformAccess.ensure(run) });
   // Chat can ask to turn a tool on; the member approves each request in the thread.
-  const toolAccess=createToolAccess({list:()=>mcp.list(),policy:(server,name,value)=>mcp.policy(server,name,value),
+  const toolAccess=createToolAccess({list:()=>mcp.list(),policy:(server,name,value)=>mcp.policy(server,name,value),use:work=>database.use(work),active:activeRun,
     take:async run=>{const takeId=(await database.use(db=>db.query<{take_id:string}>('SELECT take_id FROM take_runs WHERE id=$1',[run]))).rows[0]?.take_id;if(!takeId)throw new Error('Run unavailable');return {takeId,permissions:await mcp.takePermissions(takeId)};}});
   const searchAgent = createSearchAgentService({
     screening: createRobinhoodScreening(profile, connections), savedScreens: createSavedScreens(profile),
@@ -745,6 +745,8 @@ export function bootBackgroundHost(profile: string, build: string) {
       if(method==='gateway:instructions') return mcp.instructions(String(args[0]));
       if(method==='gateway:list') return mcp.catalog(String(args[0]));
       if(method==='gateway:call') return mcp.call(String(args[0]),String(args[1]),args[2]);
+      // The member's answer to chat's tool request; its own reasons are shown, nothing else.
+      if(method==='mcp:tool-access-decide'){try{return await toolAccess.decide(z.uuid().parse(args[0]),z.boolean().parse(args[1]));}catch(error){return {error:error instanceof ToolAccessError?error.message:'Could not save your answer. Try again.'};}}
       if(method.startsWith('mcp:')) { try {
         if(method==='mcp:platform-settings')return await platformAccess.settings();
         if(method==='mcp:platform-configure')return await platformAccess.configure(args[0]);
@@ -769,6 +771,7 @@ export function bootBackgroundHost(profile: string, build: string) {
         if(method==='mcp:policy')return await mcp.policy(args[0],args[1],args[2]);
         if(method==='mcp:approvals')return await mcp.approvals();
         if(method==='mcp:decide')return await mcp.decide(args[0],args[1]);
+        if(method==='mcp:tool-access-requests')return await toolAccess.forMessage(args[0]);
       }catch {return {error:'Could not complete the MCP action. Check configuration, connection, and credentials.'};} }
       if(method.startsWith('strategies:')){
         if(settings.busy())return {error:'Database maintenance is in progress.'};
