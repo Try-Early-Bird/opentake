@@ -4,28 +4,7 @@ import { toolLabel } from '../McpToolRow';
 import { useToasts } from '../ui/toast';
 import { useEffect,useState } from 'react';
 import type { ToolApproval } from '../../../../shared/mcp-management';
-const builtinServer='00000000-0000-4000-8000-000000000001';
-/** A tool access request's input, tolerating a stored JSON string. */
-function requested(item:ToolApproval):{serverId?:string;name?:string;policy?:string;reason?:string}{try{return (typeof item.input==='string'?JSON.parse(item.input):item.input??{}) as ReturnType<typeof requested>;}catch{return {};}}
-function approvalCopy(item:ToolApproval){
- const action=item.tool_name.replaceAll('_',' ');
- if(item.server_id!==builtinServer)return {title:`Allow ${item.server_name||'this server'} to ${action}?`,description:''};
- if(item.tool_name==='robinhood_get_portfolio')return {title:'Allow Robinhood portfolio access?',description:'Read your connected account’s balances and buying power.'};
- if(item.tool_name==='opentake_connection_status')return {title:'Check your platform connections?',description:'Check which accounts are connected and which features they support.'};
- if(item.tool_name==='opentake_list_accounts')return {title:'List your connected accounts?',description:'Read the list of connected accounts and the features each supports.'};
- if(item.tool_name==='opentake_request_tool_access'){
-  // The member is deciding a permission: name the tool, the setting and chat's stated reason.
-  const request=requested(item);
-  const tool=(request.name??'a tool').replaceAll('_',' ');
-  return {title:`Turn on ${tool}?`,description:`${request.policy==='allowed'?'Chat can use it without asking':'Chat asks you before each use'}, from its next response. You can change this in Settings → MCP.${request.reason?` Chat’s reason: ${request.reason}`:''}`};
- }
- if(item.tool_name==='opentake_propose_strategy')return {title:'Save a proposed Take revision?',description:'Saves a draft for you to review. Nothing is committed or traded.'};
- if(item.tool_name==='opentake_propose_rules')return {title:'Save proposed rule changes?',description:'Saves a proposal for you to review in Rules. Nothing changes until you accept it.'};
- if(item.tool_name.startsWith('opentake_'))return {title:`Allow ${action.replace(/^opentake /,'Opentake ')}?`,description:'Use your Opentake data for this request.'};
- if(item.tool_name.startsWith('coinbase_'))return {title:`Allow ${action.replace(/^coinbase /,'Coinbase ')}?`,description:'Read the requested data from Coinbase.'};
- if(item.tool_name.startsWith('robinhood_'))return {title:`Allow ${action.replace(/^robinhood get /,'Robinhood ').replace(/^robinhood /,'Robinhood ')}?`,description:'Read the requested data from Robinhood.'};
- return {title:`Allow ${action}?`,description:''};
-}
+import { approvalCopy, requested } from '../../../../shared/tool-approval-copy';
 export function Approvals(){const [items,setItems]=useState<ToolApproval[]>([]);const [busy,setBusy]=useState(false);const [error,setError]=useState('');const notifications=useToasts();useEffect(()=>{let active=true;let timer:ReturnType<typeof setTimeout>;const poll=async()=>{try{const v=await window.mcp.approvals();if(active){setItems(v);notifications.recover('approvals-poll');}}catch{if(active)notifications.error('approvals-poll','Could not check tool approvals. Retrying…',true);}if(active)timer=setTimeout(poll,750);};void poll();return()=>{active=false;clearTimeout(timer);};},[notifications]);
  async function decide(id:string,approved:boolean){setBusy(true);try{await window.mcp.decide(id,approved);setItems(old=>old.filter(i=>i.id!==id));setError('');}catch{setError('Could not save approval. Please try again.');}finally{setBusy(false);}}
  // "Always allow" opens the tool in Settings, then lets this call through.

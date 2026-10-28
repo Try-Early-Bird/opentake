@@ -275,13 +275,21 @@ test('approval alerts name the Take and distinguish platform sharing from tool p
   expect(alerts[0].body).toContain(notice.body);
 });
 
+test('a proposal approval alert says what saving it does, in plain words', async () => {
+  const item = await approval();
+  await db.query("UPDATE tool_approvals SET tool_name='opentake_propose_strategy',server_id='00000000-0000-4000-8000-000000000001',server_name='Opentake platforms' WHERE id=$1", [item.id]);
+  const notice = (await service.list()).items[0];
+  expect(notice.body).toBe('Save a proposed Take revision? Saves a draft for you to review. Nothing is committed or traded.');
+});
+
 test('tool approval alerts describe the requested read without copying arguments', async () => {
   const item = await approval();
-  await db.query("UPDATE tool_approvals SET tool_name='robinhood_get_crypto_positions',server_name='Opentake platforms' WHERE id=$1", [item.id]);
+  await db.query("UPDATE tool_approvals SET tool_name='robinhood_get_crypto_positions',server_id='00000000-0000-4000-8000-000000000001',server_name='Opentake platforms' WHERE id=$1", [item.id]);
   const notice = (await service.list()).items[0];
   expect(notice.title).toBe('Synthetic take needs your approval');
-  expect(notice.body).toContain('Read Robinhood crypto positions');
-  expect(notice.body).toContain('tool or server permission');
+  expect(notice.body).toBe('Read your Robinhood crypto positions? Read the requested data from Robinhood.');
+  // Opentake's own server and permission jargon are not shown to the member.
+  expect(notice.body).not.toMatch(/Opentake platforms|permission|opentake_|robinhood_/);
   expect(JSON.stringify(notice)).not.toContain('must-not-copy');
   await service.tick();expect(alerts[0].body).toContain(notice.body);
 });
