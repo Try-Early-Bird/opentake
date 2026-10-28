@@ -3,7 +3,6 @@
 const focus = 'focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-50';
 export const primaryButtonClass = `rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 ${focus}`;
 export const secondaryButtonClass = `rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground ${focus}`;
-export const backButtonClass = `self-start rounded text-sm text-muted-foreground hover:text-foreground ${focus}`;
 export const linkButtonClass = `rounded text-sm underline underline-offset-4 ${focus}`;
 export const fieldLabelClass = 'block text-sm font-medium';
 export const inputClass = 'mt-1.5 w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-normal outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50';

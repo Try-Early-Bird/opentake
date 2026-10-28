@@ -2,10 +2,10 @@ import { CoinbaseConnections } from './CoinbaseConnections';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { checkAiConnections } from '../ai-connection-status';
 import { ConnectionRow, connectionDisconnectClass } from './ConnectionRow';
-import { AiConnectDialog } from './AiConnectDialog';
+import { AiConnectDialog, type StepBack } from './AiConnectDialog';
 import { LoaderCircle, Plug } from 'lucide-react';
 import { RobinhoodLogoTile } from '../logos';
-import { Dialog, DialogContent, DialogTitle } from './ui/dialog';
+import { Dialog, DialogBackTitle, DialogContent } from './ui/dialog';
 import { RowMenu, RowMenuItem } from './ui/row-menu';
 import type { ConnectionResult, ConnectionSummary } from '../../../shared/connections';
 
@@ -14,6 +14,10 @@ export function ConnectMenu() {
   const onCoinbaseConnected = useCallback((connected: boolean) => { setCoinbaseConnected(connected); if (connected) { setConnectionRequired(false); setManaging(true); } }, []);
   const [managing, setManaging] = useState(false);
   const [tab, setTab] = useState<'platform' | 'ai'>('platform');
+  // The AI tab's setup steps put their Back in this dialog's header.
+  const aiBackHandler = useRef<(() => void) | undefined>(undefined);
+  const [aiBack, setAiBack] = useState({ available: false, disabled: false });
+  const aiStepBack = useRef<StepBack>({ handler: aiBackHandler, change: state => setAiBack(old => old.available === state.available && old.disabled === state.disabled ? old : state) }).current;
   const keepMenuOpen = useCallback(() => {}, []);
   const [open, setOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
@@ -102,7 +106,7 @@ export function ConnectMenu() {
     </button>
     <Dialog open={open} onOpenChange={changeOpen}>
       <DialogContent className={`data-[nested-dialog-open]:invisible ${managing ? "max-w-[570px] gap-6 rounded-[28px] p-6 sm:p-8 [.dark_&]:bg-[#111113] ring-black/5 [.dark_&]:ring-white/[0.03] shadow-[0_24px_64px_rgba(0,0,0,0.35)] [&>button:last-child]:top-8 [&>button:last-child]:right-8 [&>button:last-child]:text-muted-foreground" : "max-w-sm"}`} showCloseButton={!connectionRequired || coinbaseConnected || connection?.status === 'connected'}>
-        <DialogTitle>{managing ? 'Connections' : 'Connect a trading platform'}</DialogTitle>
+        <DialogBackTitle onBack={signingIn ? () => void cancelSignIn() : managing && tab === 'ai' && aiBack.available ? () => aiBackHandler.current?.() : undefined} backDisabled={signingIn ? cancelling : aiBack.disabled} backLabel={signingIn && cancelling ? 'Going back' : 'Back'}>{managing ? 'Connections' : 'Connect a trading platform'}</DialogBackTitle>
         {managing && <div role="tablist" aria-label="Connections" className="-ml-1 flex gap-1">
           {(['platform', 'ai'] as const).map(value => <button key={value} type="button" role="tab" id={`connection-tab-${value}`} aria-controls={`connection-panel-${value}`} aria-selected={tab === value} tabIndex={tab === value ? 0 : -1} onKeyDown={event => {
             if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
@@ -111,10 +115,9 @@ export function ConnectMenu() {
             setTab(next); document.getElementById(`connection-tab-${next}`)?.focus();
           }} disabled={busy} onClick={() => setTab(value)} className={`rounded-full px-4 py-2 text-sm font-medium focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-50 ${tab === value ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>{value === 'ai' ? 'AI' : 'Platform'}</button>)}
         </div>}
-        {managing && tab === 'ai' ? <div role="tabpanel" id="connection-panel-ai" aria-labelledby="connection-tab-ai"><AiConnectDialog open={open} embedded onClose={keepMenuOpen} /></div> : <div role={managing ? 'tabpanel' : undefined} id="connection-panel-platform" aria-labelledby={managing ? 'connection-tab-platform' : undefined} className="space-y-4">
+        {managing && tab === 'ai' ? <div role="tabpanel" id="connection-panel-ai" aria-labelledby="connection-tab-ai"><AiConnectDialog open={open} embedded onClose={keepMenuOpen} stepBack={aiStepBack} /></div> : <div role={managing ? 'tabpanel' : undefined} id="connection-panel-platform" aria-labelledby={managing ? 'connection-tab-platform' : undefined} className="space-y-4">
         {managing && <p className="text-sm text-muted-foreground">Your connected platform accounts.</p>}
         {signingIn ? <div className="space-y-4">
-          <button type="button" disabled={cancelling} onClick={() => void cancelSignIn()} className="rounded text-sm text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-50">{cancelling ? 'Going back…' : '← Back'}</button>
           <div role="status" aria-label="Connecting to Robinhood" className="flex justify-center py-5 text-muted-foreground">
             <LoaderCircle aria-hidden="true" className="size-6 animate-spin motion-reduce:animate-none" />
           </div>

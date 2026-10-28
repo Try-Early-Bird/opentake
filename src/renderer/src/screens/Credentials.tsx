@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
-import { RefreshCw, ChevronRight, ArrowLeft, Sparkles, Globe, Database, KeyRound } from 'lucide-react';
+import { RefreshCw, ChevronRight, Sparkles, Globe, Database, KeyRound } from 'lucide-react';
 import { credentialMenu, credentialTypes, type CredentialMetadata, type CredentialType, type CredentialResult } from '../../../shared/credentials';
 import { CredentialForm } from './CredentialForm';
 import { RowMenu, RowMenuItem } from '../components/ui/row-menu';
-import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogFooter } from '../components/ui/dialog';
+import { Dialog, DialogBackTitle, DialogContent, DialogTitle, DialogDescription, DialogFooter } from '../components/ui/dialog';
 import { useShortcutLock } from '../shortcuts/Shortcuts';
 
 const control = 'rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-50';
@@ -63,12 +63,11 @@ export function Credentials() {
     </li>)}</ul>
     <Dialog open={editing !== null} onOpenChange={open => { if (!open && !busy) close(); }}>
       <DialogContent showCloseButton={!busy}>
-        <DialogTitle>{type ? `${editing === 'new' ? 'Add' : 'Edit'} ${credentialTypes[type]}` : 'Add credential'}</DialogTitle>
+        <DialogBackTitle onBack={type && editing === 'new' ? () => { setType(null); setError(''); } : undefined} backDisabled={busy}>{type ? `${editing === 'new' ? 'Add' : 'Edit'} ${credentialTypes[type]}` : 'Add credential'}</DialogBackTitle>
         {!type ? <RowMenu aria-label="Credential types">{credentialMenu.map(id => {
           const Icon = { 'ai-provider': Sparkles, 'http-api': Globe, 'websocket-api': Globe, database: Database, 'key-value': KeyRound }[id];
           return <RowMenuItem key={id} disabled={id === 'database'} title={id === 'database' ? 'Database connections are not available yet' : undefined} onClick={() => setType(id)}><Icon size={18} aria-hidden="true" /><span className="flex-1">{credentialTypes[id]}</span>{id === 'database' ? <span className="text-xs text-muted-foreground">Unavailable</span> : <ChevronRight size={16} aria-hidden="true" />}</RowMenuItem>;
         })}</RowMenu> : <>
-          {editing === 'new' && <button type="button" className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground" disabled={busy} onClick={() => { setType(null); setError(''); }}><ArrowLeft size={14} aria-hidden="true" />Back</button>}
           <CredentialForm key={`${editing === 'new' ? 'new' : editing?.id}-${type}`} type={type} item={editing && editing !== 'new' ? editing : undefined} busy={busy} error={error} save={input => void perform(() => window.settings.saveCredential(input))} cancel={close} />
         </>}
       </DialogContent>
