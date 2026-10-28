@@ -1,3 +1,4 @@
+import { approvalCopy } from '../shared/tool-approval-copy';
 import { backgroundDatabaseWork } from './database-client';
 import { setImmediate as yieldToHost } from 'node:timers/promises';
 import type { DatabaseClient as PGlite } from './database-client';
@@ -23,8 +24,8 @@ async function describeApprovals(db: Pick<PGlite, 'query'>, rows: { payload: Not
     const approvalTable = p.source.type === 'tool_approval' ? 'tool_approvals' : p.source.type === 'platform_approval' ? 'platform_access_requests' : null;
     if (!approvalTable) continue;
     const toolApproval = approvalTable === 'tool_approvals';
-    const detail = (await db.query<{ title: string; provider: string | null; tool: string | null; server: string | null; sharing: boolean | null; mode: string | null }>(`
-      SELECT t.title, ${toolApproval ? 'NULL::text AS provider, a.tool_name AS tool, a.server_name AS server, a.platform_sharing AS sharing' : 'a.provider, NULL::text AS tool, NULL::text AS server, false AS sharing'},
+    const detail = (await db.query<{ title: string; provider: string | null; tool: string | null; serverId: string | null; server: string | null; sharing: boolean | null; mode: string | null }>(`
+      SELECT t.title, ${toolApproval ? 'NULL::text AS provider, a.tool_name AS tool, a.server_id::text AS "serverId", a.server_name AS server, a.platform_sharing AS sharing' : 'a.provider, NULL::text AS tool, NULL::text AS "serverId", NULL::text AS server, false AS sharing'},
         r.configuration->>'permissionMode' AS mode
       FROM ${approvalTable} a JOIN take_runs r ON r.id=a.run_id JOIN takes t ON t.id=r.take_id
       WHERE a.id=$1::uuid AND t.id=$2::uuid`, [p.source.id, p.context.takeId])).rows[0];
@@ -32,10 +33,11 @@ async function describeApprovals(db: Pick<PGlite, 'query'>, rows: { payload: Not
     const clean = (value: string) => value.replace(/[\r\n\t]/g, ' ').slice(0, 160);
     const title = `${clean(detail.title) || 'Untitled Take'} needs your approval`;
     const provider = ({ claude: 'Claude', codex: 'Codex', grok: 'Grok', openrouter: 'OpenRouter' } as Record<string, string>)[detail.provider ?? ''] ?? 'the AI provider';
-    const action = ({ robinhood_get_crypto_positions: 'Read Robinhood crypto positions', robinhood_get_crypto_orders: 'Read Robinhood crypto order history', opentake_list_accounts: 'List connected accounts' } as Record<string, string>)[detail.tool ?? ''] ?? clean((detail.tool ?? 'Tool request').replaceAll('_', ' '));
+    // The approval panel's wording, without the call's arguments: notifications never copy them.
+    const copy = approvalCopy({ tool_name: detail.tool ?? 'tool_request', server_id: detail.serverId ?? '', server_name: detail.server ? clean(detail.server) : null });
     const body = p.source.type === 'platform_approval'
       ? `Allow ${provider} to use account data in this Take. Balances, positions and earlier account context may be shared. This permission is separate from Auto tool mode.`
-      : `${action}${detail.server ? ` via ${clean(detail.server)}` : ''}. ${detail.sharing ? 'This external tool may receive account context from the Take.' : detail.mode === 'ask' ? 'This Take is set to Ask before tool calls.' : 'The tool or server permission requires approval.'}`;
+      : [copy.title, copy.description, detail.sharing ? 'This external tool may receive account context from the Take.' : detail.mode === 'ask' ? 'This Take is set to Ask before tool calls.' : ''].filter(Boolean).join(' ');
     row.payload = { ...p, title, body };
   }
 }
