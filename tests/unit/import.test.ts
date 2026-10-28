@@ -71,6 +71,8 @@ test('corrupt archives and traversal/link entries are rejected', async () => {
   expect(() => validateArchive(Buffer.from('not a gzip'))).toThrow();
   const db = new PGlite();
   try {
+    // PGlite 0.5.13 no longer queues a dump until the database is ready.
+    await db.waitReady;
     const tar = gunzipSync(Buffer.from(await (await db.dumpDataDir('gzip')).arrayBuffer()));
     for (const unsafe of ['path', 'link']) {
       const changed = Buffer.from(tar);
