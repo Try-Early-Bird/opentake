@@ -59,18 +59,18 @@ export function createLocalModelConnection(store: SecretStore, detect = detectOp
       catch { return { ok: false, message: 'Could not reach a model server at that URL. Start it and retry.' }; }
       if (!models.length) return { ok: false, message: 'The server has no models. Pull or load a model and retry.' };
       try { await store.set(reference, JSON.stringify({ baseUrl, validatedAt: new Date().toISOString() })); }
-      catch { return { ok: false, message: 'Could not save the connection. Check OS secret storage.' }; }
+      catch { return { ok: false, message: 'Could not save the connection. Try connecting again.' }; }
       return { ok: true };
     },
     async disconnect() {
-      if (!store.available()) throw new Error('Unlock OS secret storage before disconnecting AI.');
+      if (!store.available()) throw new Error('Could not disconnect right now. Try again.');
       await store.delete(reference);
     },
     async status(): Promise<AiConnectionState> {
       const runtime = await checkInstallation();
       if (!runtime.installed) return { provider: 'local', status: 'disconnected', ...runtime, message: 'Not installed' };
       try { return { provider: 'local', status: (await saved()) ? 'connected' : 'disconnected', ...runtime }; }
-      catch { return { provider: 'local', status: 'error', ...runtime, message: 'Could not check the saved connection. Check OS secret storage.' }; }
+      catch { return { provider: 'local', status: 'error', ...runtime, message: 'Connect your local model again to keep using it.' }; }
     },
   };
 }

@@ -35,7 +35,7 @@ export function OpenCodeConnect({ onBusy, onConnected, provider = 'OpenCode Zen'
   async function connect(id: string) {
     setBusy(true); setError('');
     try { const result = await (provider === 'OpenRouter' ? window.aiConnections.useOpenRouterCredential(id) : window.aiConnections.useCredential(id)); if (result.ok) onConnected(); else setError(result.message ?? 'Validation failed. Please retry.'); }
-    catch { setError('Could not connect this credential. Check OS secret storage and retry.'); }
+    catch { setError('Could not use that saved key. Add your API key again.'); }
     finally { setBusy(false); }
   }
   async function save(input: CredentialInput) {

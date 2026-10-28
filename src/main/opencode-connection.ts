@@ -52,7 +52,7 @@ export function createOpenCodeConnection(store: SecretStore, detect = detectOpen
     checkInstallation: () => checkInstallation(true),
     async disconnect() {
       if (validating) throw new Error('Validation is in progress. Please retry.');
-      if (!store.available()) throw new Error('Unlock OS secret storage before disconnecting AI.');
+      if (!store.available()) throw new Error('Could not disconnect right now. Try again.');
       // Unlink the provider while retaining the key in Credentials.
       await store.delete(reference);
     },
@@ -70,7 +70,7 @@ export function createOpenCodeConnection(store: SecretStore, detect = detectOpen
         if (current.item.updatedAt !== item.updatedAt || current.item.value !== item.value) return { ok: false, message: 'Credential changed during validation. Please retry.' };
         await store.set(reference, JSON.stringify({ credentialId: id, fingerprint: fingerprint(item.value), validatedAt: new Date().toISOString() }));
         return { ok: true };
-      } catch { return { ok: false, message: 'Choose an OpenCode Zen credential and check OS secret storage.' }; }
+      } catch { return { ok: false, message: 'Could not use that saved key. Add your OpenCode Zen API key again.' }; }
       finally { validating = false; }
     },
     async status(): Promise<AiConnectionState> {
@@ -83,7 +83,7 @@ export function createOpenCodeConnection(store: SecretStore, detect = detectOpen
         let connected = false;
         try { const { item } = await readZen(saved.credentialId); connected = !!saved.validatedAt && saved.fingerprint === fingerprint(item.value); } catch { /* Deleted or no longer a Zen credential. */ }
         return { provider: 'opencode', status: connected ? 'connected' : 'disconnected', ...runtime };
-      } catch { return { provider: 'opencode', status: 'error', ...runtime, message: 'Could not check your saved API key. Check OS secret storage.' }; }
+      } catch { return { provider: 'opencode', status: 'error', ...runtime, message: 'Add your OpenCode Zen API key again to keep using it.' }; }
     },
   };
 }

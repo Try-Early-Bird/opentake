@@ -4,7 +4,7 @@ export const labels: Record<ActivityJob['state'], string> = {
   pending: 'Queued', running: 'Running', retrying: 'Retrying', completed: 'Completed', failed: 'Failed', needs_attention: 'Needs attention', cancelled: 'Cancelled',
 };
 export const errors: Record<string, string> = {
-  reauth_required: 'Sign in again using the platform connect menu.', storage_locked: 'Unlock OS secret storage, then retry.',
+  reauth_required: 'Sign in again using the platform connect menu.', storage_locked: 'Sign in again using the platform connect menu.',
   transient: 'Temporary connection problem. Saved credentials have been kept.', cancelled: 'Interrupted; safe to retry.',
   host_restarted: 'Resuming after a host restart.', restored_backup: 'Backup restored. Sign in again to enable synchronization.', disconnected: 'Disconnected locally.', busy: 'Waiting for another connection operation.',
 };

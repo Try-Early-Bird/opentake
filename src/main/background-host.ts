@@ -996,7 +996,7 @@ export function bootBackgroundHost(profile: string, build: string) {
         sourceDisplays.invalidate();
         if (settings.busy()) throw new Error('Database busy');
         const connection = await connections.status();
-        if (connection.status !== 'connected') return { ok: false, message: 'Connection needs attention. Unlock OS secret storage or sign in again before refreshing.' };
+        if (connection.status !== 'connected') return { ok: false, message: 'Sign in to Robinhood again before refreshing.' };
         await maintenance.request(); return { ok: true, queued: true, connection };
       }
       if (!['connections:connect', 'connections:disconnect', 'connections:select'].includes(method)) throw new Error('Unknown operation');
@@ -1017,7 +1017,7 @@ export function bootBackgroundHost(profile: string, build: string) {
         });
       } catch (error) {
         const code = connectionFailure(error).code;
-        return { ok: false, message: code === 'cancelled' ? 'Connection cancelled.' : code === 'storage_locked' ? 'Unlock OS secret storage and try again.'
+        return { ok: false, message: code === 'cancelled' ? 'Connection cancelled.' : code === 'storage_locked' ? 'Sign in to Robinhood again.'
           : code === 'reauth_required' ? 'Sign in to Robinhood again.' : 'Connection could not finish. Check the network and that port 3119 is available, then retry.' };
       }
     }), (token, method, args) => capabilities.authorize(token, method, args) || searchAgent.authorize(token, method, args));

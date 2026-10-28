@@ -1,7 +1,7 @@
 export const coinbaseMessages = {
   orders_pending: 'This portfolio has reserved or unresolved orders. Cancel unused reservations and let submitted orders reconcile before disconnecting.',
   invalid_key: 'Choose a downloaded Coinbase ECDSA API-key JSON file.',
-  storage_locked: 'Unlock secure OS storage before connecting Coinbase.',
+  storage_locked: 'Reconnect this Coinbase account to keep using it.',
   permissions: 'Use a key with View enabled and Transfer disabled. Enable Trade for View + Trade, or choose View only.',
   scope: 'The key must identify one readable Coinbase spot portfolio. Check the selected portfolio in Coinbase.',
   duplicate: 'This Coinbase portfolio is already connected. Use Replace key on that connection.',

@@ -131,6 +131,17 @@ test('Claude paste requires a delayed standalone Enter and cancellation stops su
   } finally { await login?.cancel(); await rm(root, { recursive: true, force: true }); }
 });
 
+test('a saved sign-in that can no longer be read asks to sign in again', async () => {
+  const store = memory();
+  store.values.set('ai:subscription:v1:claude', claude);
+  // Mirrors SecretStore.has(), which decrypts the record and throws when it cannot.
+  store.has = async (key: string) => { if (key === 'ai:subscription:v1:claude') throw new Error('Secret could not be read'); return store.values.has(key); };
+  const service = createAiConnections(store, vi.fn(), async () => {});
+  const claudeState = (await service.status()).find(item => item.provider === 'claude');
+  expect(claudeState).toMatchObject({ status: 'error', message: 'Sign in to Claude again to keep using it.' });
+  expect(claudeState?.message).not.toMatch(/storage|unlock/i);
+});
+
 test('disconnect removes only the selected subscription and rejects invalid providers or locked storage', async () => {
   const store = memory();
   store.values.set('ai:subscription:v1:claude', claude);
@@ -138,7 +149,7 @@ test('disconnect removes only the selected subscription and rejects invalid prov
   const service = createAiConnections(store, vi.fn(), async () => {});
   await expect(service.disconnect('unknown')).rejects.toThrow('Unknown AI provider');
   store.available = () => false;
-  await expect(service.disconnect('claude')).rejects.toThrow('Unlock');
+  await expect(service.disconnect('claude')).rejects.toThrow('Could not disconnect right now');
   expect(store.values.size).toBe(2);
   store.available = () => true;
   await service.disconnect('claude');

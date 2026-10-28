@@ -196,7 +196,7 @@ test('credentials UI adds, edits and removes metadata without revealing values',
       ipcMain.handle('settings:security', () => ({ secretStorageAvailable: false }));
     });
     await page.getByRole('button', { name: 'Refresh credentials' }).click();
-    await page.getByText('OS secret storage is unavailable.', { exact: false }).waitFor();
+    await page.getByText('Saved credentials can’t be opened right now.', { exact: false }).waitFor();
     assert.equal(await page.getByRole('button', { name: 'Add credential', exact: true }).isDisabled(), true);
   } finally {
     try { if (application) await closeDesktop(application); } finally { await stopHost(userData); }

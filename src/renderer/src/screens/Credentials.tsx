@@ -27,7 +27,7 @@ export function Credentials() {
         if (!result.ok) throw new Error(result.message);
         setItems(result.items);
       }
-    } catch { setError('Unable to load credentials. Unlock OS secret storage and retry.'); }
+    } catch { setError('Unable to load credentials. Quit and reopen Opentake, then try again.'); }
     finally { setLoaded(true); setBusy(false); }
   }
   useEffect(() => { void refresh(); }, []);
@@ -53,7 +53,7 @@ export function Credentials() {
       </button>
     </div>
     <p className="text-sm text-muted-foreground">Credentials are stored encrypted on your computer, protected by your operating system’s secure storage.</p>
-    {!loaded ? <p role="status">Checking secure storage…</p> : !available ? <p role="status">OS secret storage is unavailable. Unlock or configure your OS keychain, then retry. Saving credentials is disabled.</p> : null}
+    {!loaded ? <p role="status">Loading credentials…</p> : !available ? <p role="status">Saved credentials can’t be opened right now. Quit and reopen Opentake, then try again. Saving credentials is disabled.</p> : null}
     {error && !editing && !removing && <p role="alert" className="text-sm text-destructive">{error}</p>}
     <div className="flex gap-2"><button type="button" className={control} disabled={!available || busy || !loaded} onClick={() => edit('new')}>Add credential</button></div>
     {loaded && available && !error && !items.length && <p className="text-sm text-muted-foreground">No credentials saved yet.</p>}
