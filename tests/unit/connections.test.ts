@@ -65,6 +65,31 @@ test('connect, select, restart, refresh, missing secrets, and local disconnect',
   } finally { await service.close(); await db.close(); await rm(path, { recursive: true, force: true }); }
 });
 
+test('a credential OS storage can no longer read asks for sign-in instead of failing status', async () => {
+  const path = await mkdtemp(join(tmpdir(), 'earlybird-connections-'));
+  const db = createDatabaseLifecycle(join(path, 'database'));
+  const values = new Map<string, string>(); const unreadable = new Set<string>();
+  // Mirrors SecretStore.has(), which decrypts the record and throws when it cannot.
+  const secrets: SecretStore = { available: () => true, get: async ref => values.get(ref) ?? null,
+    set: async (ref, value) => { values.set(ref, value); },
+    has: async ref => { if (unreadable.has(ref)) throw new Error('Secret could not be read; reconnect the account or unlock OS storage'); return values.has(ref); },
+    delete: async ref => { values.delete(ref); } };
+  const factory = async (_secrets: SecretStore, ref: string) => ({
+    authorize: async () => { await secrets.set(ref, 'synthetic-access-token'); },
+    accounts: async () => [{ externalRef: 'one', maskedNumber: '••••1111', nickname: null, accountType: 'cash', agenticAllowed: true }],
+  });
+  const service = createConnections(db, secrets, async () => {}, factory);
+  try {
+    await db.start();
+    expect((await service.connect()).status).toBe('connected');
+    for (const ref of values.keys()) unreadable.add(ref);
+    expect((await service.status()).status).toBe('reauth_required');
+    // A new sign-in stores a fresh credential and recovers the connection.
+    expect((await service.connect()).status).toBe('connected');
+    expect((await service.status()).status).toBe('connected');
+  } finally { await service.close(); await db.close(); await rm(path, { recursive: true, force: true }); }
+});
+
 test('in-flight sign-in reopens the same URL and is cancelled before shutdown', async () => {
   const path = await mkdtemp(join(tmpdir(), 'earlybird-connect-cancel-'));
   const db = createDatabaseLifecycle(join(path, 'database'));

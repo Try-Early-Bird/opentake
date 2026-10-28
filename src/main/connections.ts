@@ -46,7 +46,9 @@ export function createConnections(database: ReturnType<typeof createDatabaseLife
   async function summary(db: PGlite): Promise<ConnectionSummary> {
     const row = (await db.query<ConnectionRow>(select)).rows[0];
     if (!row) return { status: 'disconnected', checkedAt: null, accounts: [] };
-    const status = row.status === 'connected' && (!row.credential_ref || !secrets.available() || !await secrets.has(row.credential_ref))
+    // A credential OS storage can no longer decrypt needs a fresh sign-in; failing status would hide Connect.
+    const readable = async (ref: string) => { try { return await secrets.has(ref); } catch { return false; } };
+    const status = row.status === 'connected' && (!row.credential_ref || !secrets.available() || !await readable(row.credential_ref))
       ? 'reauth_required' : row.status;
     const accounts = (await db.query<ConnectionSummary['accounts'][number]>(`SELECT id, masked_number AS "maskedNumber", nickname,
       account_type AS "accountType", option_level AS "optionLevel", agentic_allowed AS "agenticAllowed", selected FROM linked_accounts WHERE connection_id = $1 AND available ORDER BY masked_number, id`, [row.id])).rows;
