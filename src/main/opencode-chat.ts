@@ -53,7 +53,7 @@ export function opencodeExecutor(keyFor:()=>Promise<string>,profile:string,bridg
       else {
         try{key=await target.apiKey?.()??'';const model=await target.model?.(input.selection.model);
           compatible={providerID,name:target.name,baseUrl:await target.baseUrl(),model:input.selection.model,keyed:!!target.apiKey,pricing:model?.pricing,efforts:model?.effortLevels};}catch{throw new AdapterError(target.missing);}
-        if(input.selection.effort&&!compatible.efforts?.includes(input.selection.effort))throw new AdapterError('This thinking effort is unavailable. Choose Default or refresh models.');
+        if(input.selection.effort&&!compatible.efforts?.includes(input.selection.effort))throw new AdapterError('This thinking effort is unavailable. Choose another level or refresh models.');
         if(target.apiKey&&!key)throw new AdapterError(target.missing);
         await ripgrepShim(home,env);
       }

@@ -27,7 +27,7 @@ const models={availableModels:[{modelId:'grok-fixture',name:'Grok fixture',_meta
 const update=text=>emit({method:'session/update',params:{sessionId:mode==='wrong-session'?'other':'session',update:{sessionUpdate:'agent_message_chunk',content:{type:'text',text}}}});
 require('node:readline').createInterface({input:process.stdin}).on('line',line=>{
  const e=JSON.parse(line);fs.appendFileSync('requests.jsonl',line+'\n');
- if(e.method==='initialize'){emit({id:e.id,result:{protocolVersion:1,authMethods:[{id:'cached_token'}],_meta:{agentVersion:'1.0.46','x.ai/mcp/sdk':mode!=='no-sdk',modelState:{availableModels:[]}}}});return;}
+ if(e.method==='initialize'){emit({id:e.id,result:{protocolVersion:1,authMethods:[{id:'cached_token'}],_meta:{agentVersion:mode==='newer-cli'?'9.9.9':'1.0.46','x.ai/mcp/sdk':mode!=='no-sdk',modelState:{availableModels:[]}}}});return;}
  if(e.method==='_x.ai/models/list'){emit({id:e.id,result:mode==='catalog-error'?{result:null,error:'private-provider-diagnostic'}:{result:{availableModels:[{modelId:'grok-fixture',name:'Grok fixture',description:null}]}}});return;}
  if(e.method==='authenticate'){emit({id:e.id,result:{}});return;}
  if(e.method==='session/new'){if(e.params._meta.agentProfile.tools.join(',')!=='search_tool,use_tool')process.exit(4);serverId=e.params._meta['x.ai/mcp/servers'][0].serverId;emit({id:'discover',method:'_x.ai/mcp/sdk_call',params:{serverId,message:{jsonrpc:'2.0',id:1,method:'server/discover'}}});emit({id:e.id,result:{sessionId:'session',models}});return;}
@@ -74,11 +74,12 @@ async function setup(mode: string, signal?: AbortSignal) {
     }) as typeof spawn };
   return { root, result, deps, gatewayCall, requests: () => requests, cleanup: () => rm(root, { recursive: true, force: true }) };
 }
-for (const mode of ['success','denied','refresh','no-sdk','malformed','native','unknown-tool','duplicate','wrong-session','exit','limit','billing']) test('Grok ACP '+mode, async () => {
+for (const mode of ['success','denied','refresh','newer-cli','no-sdk','malformed','native','unknown-tool','duplicate','wrong-session','exit','limit','billing']) test('Grok ACP '+mode, async () => {
   const f = await setup(mode); const cas = vi.fn(async () => true);
   try {
     const run = grokExecutor({ ...store, compareAndSet: cas }, f.root, f.deps)(f.result.run);
-    if (['success','denied','refresh'].includes(mode)) {
+    // A newer self-updated CLI runs as long as it offers the capabilities used.
+    if (['success','denied','refresh','newer-cli'].includes(mode)) {
       await run;
       expect(f.result.text.join('')).toBe('Before [redacted]. After tool.');
       expect(f.result.replay).toHaveLength(4); expect(f.result.tools).toHaveLength(2);
@@ -120,11 +121,12 @@ test('Grok effort is set after the model and only when the model lists it', asyn
 });
 test('Grok effort levels come from model meta, skipping custom option ids', () => {
   expect(grokModels({ availableModels: [
-    { modelId: 'listed', name: 'Listed', _meta: { supportsReasoningEffort: true, reasoningEfforts: ['high', { value: 'low', label: 'Fast' }, { id: 'deep', value: 'xhigh' }, 'future', null] } },
+    { modelId: 'listed', name: 'Listed', _meta: { supportsReasoningEffort: true, reasoningEffort: 'high', reasoningEfforts: ['high', { value: 'low', label: 'Fast' }, { id: 'deep', value: 'xhigh' }, 'future', null] } },
+    { modelId: 'marked', name: 'Marked', _meta: { supportsReasoningEffort: true, reasoningEfforts: ['low', { value: 'medium', default: true }] } },
     { modelId: 'unlisted', name: 'Unlisted', _meta: { supportsReasoningEffort: true } },
     { modelId: 'unsupported', name: 'Unsupported', _meta: { supportsReasoningEffort: false, reasoningEfforts: ['high'] } },
     { modelId: 'plain', name: 'Plain' },
-  ] }).map(m => m.effortLevels)).toEqual([['low', 'high'], ['minimal', 'low', 'medium', 'high', 'xhigh'], undefined, undefined]);
+  ] }).map(m => [m.effortLevels, m.defaultEffort])).toEqual([[['low', 'high'], 'high'], [['low', 'medium'], 'medium'], [['minimal', 'low', 'medium', 'high', 'xhigh'], undefined], [undefined, undefined], [undefined, undefined]]);
 });
 test('Grok model discovery requests the catalog after an empty handshake, cleans up and caches runtime choices', async () => {
   const f = await setup('success');

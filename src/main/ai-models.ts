@@ -28,8 +28,9 @@ export function parseModels(raw: unknown): AiModel[] {
     // Native CLI discovery advertises exact supported levels; never infer them from model names.
     const advertised = entry.supportsEffort === false ? [] : entry.supportedEffortLevels ?? (Array.isArray(entry.supportedReasoningEfforts) ? entry.supportedReasoningEfforts.map((item: { reasoningEffort?: unknown } | null) => item?.reasoningEffort) : []);
     const effortLevels = reasoningEfforts.filter(level => Array.isArray(advertised) && advertised.includes(level));
+    const defaultEffort = effortLevels.find(level => level === entry.defaultReasoningEffort);
     const imageInput = typeof entry.capabilities?.image_input?.supported === 'boolean' ? entry.capabilities.image_input.supported : Array.isArray(entry.inputModalities) ? entry.inputModalities.includes('image') : verifiedImageModels.has(resolvedModel ?? value) ? true : undefined;
-    if (typeof value === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9_./:[\]-]{0,199}$/.test(value) && typeof label === 'string') result.set(value, { value, label: label.slice(0, 160), ...(effortLevels.length ? { effortLevels } : {}), ...(imageInput !== undefined ? { imageInput } : {}), ...(resolvedModel ? { resolvedModel } : {}), ...(typeof entry.description === 'string' ? { description: entry.description.slice(0, 600) } : {}), ...(entry.disabled === true ? { disabled: true } : {}) });
+    if (typeof value === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9_./:[\]-]{0,199}$/.test(value) && typeof label === 'string') result.set(value, { value, label: label.slice(0, 160), ...(effortLevels.length ? { effortLevels } : {}), ...(defaultEffort ? { defaultEffort } : {}), ...(imageInput !== undefined ? { imageInput } : {}), ...(resolvedModel ? { resolvedModel } : {}), ...(typeof entry.description === 'string' ? { description: entry.description.slice(0, 600) } : {}), ...(entry.disabled === true ? { disabled: true } : {}) });
   }
   return [...result.values()];
 }
@@ -47,8 +48,9 @@ export function parseOpenRouterModels(raw: unknown): AiModel[] {
     // OpenRouter lists each model's accepted efforts; OpenCode sends the chosen one as reasoning_effort.
     const advertised = entry.reasoning?.supported_efforts;
     const effortLevels = reasoningEfforts.filter(level => Array.isArray(advertised) && advertised.includes(level));
+    const defaultEffort = effortLevels.find(level => level === entry.reasoning?.default_effort);
     result.push({ value: entry.id, label: (typeof entry.name === 'string' ? entry.name : entry.id).slice(0, 160),
-      ...(effortLevels.length ? { effortLevels } : {}),
+      ...(effortLevels.length ? { effortLevels } : {}), ...(defaultEffort ? { defaultEffort } : {}),
       ...(typeof entry.description === 'string' ? { description: entry.description.slice(0, 600) } : {}),
       ...(Number.isSafeInteger(entry.created) ? { created: entry.created } : {}),
       ...(input !== undefined && output !== undefined ? { pricing: { input, output } } : {}) });
@@ -176,7 +178,7 @@ export function createModelDiscovery(store: SecretStore, root: string, status: (
             const [response, efforts] = await Promise.all([request('https://opencode.ai/zen/v1/models', { redirect: 'error', signal: AbortSignal.timeout(10000) }),
               zenEfforts(root).catch(() => new Map<string, ReasoningEffort[]>())]);
             if (!response.ok) throw new Error('Catalog unavailable');
-            choices = parseModels((await response.json()).data).map(({ effortLevels: _, ...model }) => efforts.get(model.value) ? { ...model, effortLevels: efforts.get(model.value) } : model);
+            choices = parseModels((await response.json()).data).map(({ effortLevels: _, defaultEffort: __, ...model }) => efforts.get(model.value) ? { ...model, effortLevels: efforts.get(model.value) } : model);
           } else {
             const credential = await store.get(`ai:subscription:v1:${provider}`);
             if (!credential) throw new Error('Missing connection');

@@ -6,7 +6,7 @@ import { resolveAiCli, type CliCommand } from './ai-runtime';
 import { atomicPrivateWrite } from './private-files';
 import type { SecretStore } from './secret-store';
 import { AdapterError, manageChild, nativeFailure, protocolError } from './native-chat-process';
-import { checkGrokVersion, confinedGrok, grokEnvironment, grokSecretRef, grokVersion, validateGrokCredential } from './grok-runtime';
+import { checkGrokVersion, confinedGrok, grokEnvironment, grokSecretRef, validateGrokCredential } from './grok-runtime';
 
 export interface GrokDependencies {
   launch?: typeof spawn; command?: () => CliCommand; version?: typeof checkGrokVersion;
@@ -44,7 +44,7 @@ mcps = false
 mcps = false
 `;
 export async function withGrok<T>(store: SecretStore, profile: string, signal: AbortSignal, deps: GrokDependencies,
-  work: (home: string, command: CliCommand, credential: string) => Promise<T>): Promise<T> {
+  work: (home: string, command: CliCommand, credential: string, cli: { version: string | null; verified: boolean }) => Promise<T>): Promise<T> {
   signal.throwIfAborted();
   const credential = await store.get(grokSecretRef);
   if (!credential) throw new AdapterError('Connect Grok in Settings.');
@@ -54,16 +54,16 @@ export async function withGrok<T>(store: SecretStore, profile: string, signal: A
   try {
     validateGrokCredential(credential);
     const command = (deps.command ?? (() => resolveAiCli('grok')))();
-    await (deps.version ?? checkGrokVersion)(command, home);
+    const cli = await (deps.version ?? checkGrokVersion)(command, home) ?? { version: null, verified: false };
     signal.throwIfAborted();
     await mkdir(join(home, '.grok'), { mode: 0o700, recursive: true });
     await atomicPrivateWrite(join(home, '.grok', 'auth.json'), Buffer.from(credential)); written = true;
     await atomicPrivateWrite(join(home, '.grok', 'config.toml'), Buffer.from(grokChatConfig));
-    return await work(home, (deps.confine ?? confinedGrok)(command, home, true), credential);
+    return await work(home, (deps.confine ?? confinedGrok)(command, home, true), credential, cli);
   } catch (error) {
     if (signal.aborted) throw signal.reason instanceof Error && signal.reason.name !== 'AbortError' ? signal.reason : new AdapterError('Response stopped.');
     if (error instanceof AdapterError) throw error;
-    throw new AdapterError(`Grok could not complete the request. Check sign-in and Grok CLI ${grokVersion}. No automatic retry was made.`);
+    throw new AdapterError('Grok could not complete the request. Check sign-in and that the Grok CLI is installed. No automatic retry was made.');
   } finally {
     try {
       // The caller must reap its process before returning. Only read the private
@@ -150,7 +150,8 @@ export const grokInitialize = { protocolVersion: 1, clientInfo: { name: 'opentak
   clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false } };
 export function grokInit(value: unknown) {
   const init = z.object({ protocolVersion: z.literal(1), authMethods: z.array(z.object({ id: z.string() })),
-    _meta: z.object({ agentVersion: z.literal(grokVersion), 'x.ai/mcp/sdk': z.literal(true) }).passthrough() }).parse(value);
+    // The CLI updates itself, so require the capabilities used rather than one version.
+    _meta: z.object({ agentVersion: z.string(), 'x.ai/mcp/sdk': z.literal(true) }).passthrough() }).parse(value);
   if (!init.authMethods.some(m => m.id === 'cached_token')) throw new AdapterError('Reconnect Grok in Settings. A saved Grok session is required.');
   return init;
 }

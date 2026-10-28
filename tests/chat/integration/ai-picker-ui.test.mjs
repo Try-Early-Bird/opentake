@@ -23,7 +23,7 @@ test('consolidated AI picker handles selection, refresh errors, connections and 
       ipcMain.handle('ai:status', () => [{ provider: 'claude', status: 'connected' }, { provider: 'chatgpt', status: 'disconnected' }, { provider: 'opencode', status: 'disconnected' }]);
       ipcMain.handle('chat:models', () => globalThis.pickerFailure ? { ok: false, message: 'Synthetic catalog unavailable.' } : { ok: true, source: 'runtime', models: [
         { value: 'default', label: 'Claude Sonnet 5.5 (Default)', imageInput: true, effortLevels: ['low', 'medium', 'high', 'max'] },
-        { value: 'opus', label: 'Claude Opus 5.5', imageInput: true, effortLevels: ['low', 'medium', 'high', 'max'] },
+        { value: 'opus', label: 'Claude Opus 5.5', imageInput: true, effortLevels: ['low', 'medium', 'high', 'max'], defaultEffort: 'high' },
         { value: 'haiku', label: 'Claude Haiku 4.5', imageInput: false },
       ] });
     });
@@ -40,7 +40,8 @@ test('consolidated AI picker handles selection, refresh errors, connections and 
     assert.equal(await page.getByRole('menuitemradio', { name: /Sonnet 5.5/ }).getAttribute('aria-checked'), 'true');
     const slider = page.getByRole('slider', { name: 'Thinking effort' });
     await slider.waitFor();
-    assert.equal(await slider.getAttribute('aria-valuetext'), 'Default');
+    // Default is not a stop: with no level chosen and none advertised, no level is shown.
+    assert.equal(await slider.getAttribute('aria-valuetext'), 'Model default');
     await page.keyboard.press('End');
     // Keyboard navigation must reach the slider; a slow runner may need the key a second time.
     const sliderFocused = ms => slider.evaluate((el, ms) => new Promise(resolve => { const deadline = performance.now() + ms; const check = () => el === document.activeElement ? resolve(true) : performance.now() > deadline ? resolve(false) : requestAnimationFrame(check); check(); }), ms);
@@ -49,7 +50,7 @@ test('consolidated AI picker handles selection, refresh errors, connections and 
     await page.keyboard.press('ArrowRight');
     assert.equal(await slider.getAttribute('aria-valuetext'), 'Low');
     const sliderBounds = await slider.boundingBox();
-    await slider.click({ position: { x: sliderBounds.width / 2, y: sliderBounds.height / 2 } });
+    await slider.click({ position: { x: sliderBounds.width / 3, y: sliderBounds.height / 2 } });
     assert.equal(await slider.getAttribute('aria-valuetext'), 'Medium');
     await page.keyboard.press('End');
     assert.equal(await slider.getAttribute('aria-valuetext'), 'Max');
@@ -58,10 +59,13 @@ test('consolidated AI picker handles selection, refresh errors, connections and 
     assert.equal(await trigger.evaluate(el => el === document.activeElement), true);
     await trigger.click();
     assert.equal(await slider.getAttribute('aria-valuetext'), 'Max');
+    // Choosing a model with effort levels keeps the menu open on its slider.
     await page.getByRole('menuitemradio', { name: 'Opus 5.5', exact: true }).click();
-    await trigger.click();
+    assert.equal(await menu.isVisible(), true);
+    assert.equal(await page.getByRole('menuitemradio', { name: 'Opus 5.5', exact: true }).getAttribute('aria-checked'), 'true');
     assert.equal(await slider.getAttribute('aria-valuetext'), 'Max');
     await page.getByRole('menuitemradio', { name: 'Haiku 4.5', exact: true }).click();
+    await menu.waitFor({ state: 'hidden' });
     await trigger.click(); await menu.waitFor();
     assert.equal(await slider.count(), 0);
     await page.keyboard.press('Escape'); await menu.waitFor({ state: 'hidden' });
@@ -73,9 +77,10 @@ test('consolidated AI picker handles selection, refresh errors, connections and 
       const composer = document.querySelector('form')?.getBoundingClientRect();
       return popup && composer && popup.bottom < composer.top;
     });
+    await page.getByRole('menuitemradio', { name: 'Opus 5.5', exact: true }).click();
+    assert.equal(await slider.getAttribute('aria-valuetext'), 'High (default)');
     await page.getByRole('menuitemradio', { name: /Sonnet 5.5/ }).click();
-    await trigger.click();
-    assert.equal(await slider.getAttribute('aria-valuetext'), 'Default');
+    assert.equal(await slider.getAttribute('aria-valuetext'), 'Model default');
     await page.keyboard.press('Escape'); await menu.waitFor({ state: 'hidden' });
     await app.evaluate(() => { globalThis.pickerFailure = true; });
     await trigger.click(); await page.getByRole('menuitem', { name: 'Refresh models', exact: true }).click();

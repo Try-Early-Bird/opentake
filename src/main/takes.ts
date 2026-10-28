@@ -106,7 +106,7 @@ export function createTakes(db: Database, execute: TakeExecutor, models: (provid
    const duplicate=await db.use(d=>d.query('SELECT id FROM take_runs WHERE request_id=$1',[request.requestId]));if(duplicate.rows.length)return;
   if(active.has(request.takeId))throw new Error('Stop or wait for the current response in this take.');
   const catalog=await models(request.selection.provider);if(!catalog.ok||!catalog.models.some(m=>m.value===request.selection.model&&!m.disabled))throw new Error('Refresh models and choose an available model.');
-  if(request.selection.effort&&!catalog.models.find(m=>m.value===request.selection.model)?.effortLevels?.includes(request.selection.effort))throw new Error('This thinking effort is unavailable. Choose Default or refresh models.');
+  if(request.selection.effort&&!catalog.models.find(m=>m.value===request.selection.model)?.effortLevels?.includes(request.selection.effort))throw new Error('This thinking effort is unavailable. Choose another level or refresh models.');
   const take=await load(request.takeId);if(take.archivedAt)throw new Error('Unarchive this take before replying.');
   if(request.parentId&&!take.messages.some(m=>m.id===request.parentId))throw new Error('Message no longer exists.');
   const path=visibleMessages({...take,headId:request.parentId});
