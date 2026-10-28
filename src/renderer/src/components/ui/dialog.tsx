@@ -1,6 +1,6 @@
-import type { ComponentProps } from 'react';
+import type { ComponentProps, ReactNode } from 'react';
 import { Dialog as Primitive } from '@base-ui/react/dialog';
-import { X } from 'lucide-react';
+import { ArrowLeft, X } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
 // Local shadcn/Base UI dialog, matching the reference desktop's primitives.
@@ -21,6 +21,13 @@ export function DialogHeader({ className, ...props }: ComponentProps<'div'>) {
 }
 export function DialogTitle({ className, ...props }: Primitive.Title.Props) {
   return <Primitive.Title className={cn('pr-6 text-lg font-medium', className)} {...props} />;
+}
+/** A dialog title with Back beside it: moving back a step always sits in the header, never in the body. */
+export function DialogBackTitle({ onBack, backDisabled = false, backLabel = 'Back', children }: { onBack?: () => void; backDisabled?: boolean; backLabel?: string; children: ReactNode }) {
+  return <div className="flex items-center gap-1.5 pr-6">
+    {onBack && <button type="button" aria-label={backLabel} disabled={backDisabled} onClick={onBack} className="-ml-1.5 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40"><ArrowLeft size={18} aria-hidden="true" /></button>}
+    <DialogTitle className="pr-0">{children}</DialogTitle>
+  </div>;
 }
 export function DialogDescription({ className, ...props }: Primitive.Description.Props) {
   return <Primitive.Description className={cn('text-sm leading-relaxed text-muted-foreground', className)} {...props} />;

@@ -1,9 +1,10 @@
-import { useState } from 'react';
-import { actionsClass, backButtonClass, fieldLabelClass, inputClass, mutedTextClass, primaryButtonClass } from './ui/modal-styles';
+import { useEffect, useState } from 'react';
+import { actionsClass, fieldLabelClass, inputClass, mutedTextClass, primaryButtonClass } from './ui/modal-styles';
 
-export function LocalModelConnect({ onBack, onConnected }: { onBack(): void; onConnected(): void }) {
+export function LocalModelConnect({ onBusy, onConnected }: { onBusy?(busy: boolean): void; onConnected(): void }) {
   const [url, setUrl] = useState('http://127.0.0.1:11434/v1');
   const [busy, setBusy] = useState(false);
+  useEffect(() => { onBusy?.(busy); return () => onBusy?.(false); }, [busy, onBusy]);
   const [error, setError] = useState('');
   async function connect() {
     setBusy(true); setError('');
@@ -12,7 +13,6 @@ export function LocalModelConnect({ onBack, onConnected }: { onBack(): void; onC
     finally { setBusy(false); }
   }
   return <div className="space-y-4">
-    <button type="button" disabled={busy} onClick={onBack} className={backButtonClass}>← Back</button>
     <p className={mutedTextClass}>Connect a model running on this computer with Ollama, LM Studio or another OpenAI-compatible server. Your conversation and tool results are sent to that local server.</p>
     <form className="space-y-4" onSubmit={event => { event.preventDefault(); void connect(); }}>
       <label className={fieldLabelClass}>Server URL<input required maxLength={300} disabled={busy} value={url} onChange={event => setUrl(event.target.value)} className={`${inputClass} font-mono`} /></label>

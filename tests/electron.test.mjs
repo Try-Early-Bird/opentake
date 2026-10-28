@@ -650,7 +650,7 @@ test('account Continue offers BYO AI, supports Claude code and ChatGPT device lo
     await page.getByRole('alert').filter({ hasText: 'Synthetic sign-in failed.' }).waitFor();
     await page.getByRole('button', { name: 'Retry sign-in', exact: true }).click();
     await page.getByRole('button', { name: 'Open Claude sign-in ↗', exact: true }).waitFor();
-    await page.getByRole('button', { name: '← Back', exact: true }).click();
+    await page.getByRole('button', { name: 'Back', exact: true }).click();
     await page.getByRole('button', { name: 'ChatGPT', exact: true }).click();
     await page.getByLabel('ChatGPT device code').filter({ hasText: 'ABCD-12345' }).waitFor();
     await page.getByRole('button', { name: 'Open ChatGPT sign-in ↗', exact: true }).click();
@@ -830,7 +830,12 @@ test('connection manager shows Platform and AI tabs and disconnects the platform
     await page.getByRole('tab', { name: 'AI', exact: true }).click();
     await page.getByRole('button', { name: 'Disconnect ChatGPT', exact: true }).waitFor();
     await page.getByRole('button', { name: 'Connect Claude', exact: true }).waitFor();
+    await page.getByRole('button', { name: 'Add key for OpenCode Zen', exact: true }).click();
+    // A setup step's Back sits in the Connections header, not inline in the step.
+    assert.equal(await page.getByRole('button', { name: '← Back' }).count(), 0);
+    await page.getByRole('dialog').getByRole('button', { name: 'Back', exact: true }).click();
     await page.getByRole('button', { name: 'Add key for OpenCode Zen', exact: true }).waitFor();
+    await page.getByRole('dialog').getByRole('button', { name: 'Back', exact: true }).waitFor({ state: 'detached' });
     await page.getByRole('tab', { name: 'Platform', exact: true }).click();
     await page.getByRole('button', { name: 'Disconnect', exact: true }).click();
     await page.getByText('Sign in to your Robinhood agentic account or create one to get started.').waitFor();

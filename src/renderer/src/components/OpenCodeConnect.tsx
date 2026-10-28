@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { actionsClass, backButtonClass, choiceClass, fieldLabelClass, inputClass, linkButtonClass, mutedTextClass, primaryButtonClass, secondaryButtonClass } from './ui/modal-styles';
+import { actionsClass, choiceClass, fieldLabelClass, inputClass, linkButtonClass, mutedTextClass, primaryButtonClass, secondaryButtonClass } from './ui/modal-styles';
 import type { CredentialInput, CredentialMetadata } from '../../../shared/credentials';
 
 
@@ -9,13 +9,14 @@ const notices: Record<KeyProvider, string> = {
   'OpenCode Zen': 'Use your OpenCode Zen API key. Validation sends a tiny test request that may incur a small charge. Keys are saved in Credentials.',
   OpenRouter: 'Use your OpenRouter API key. Validation only reads the key’s limits and costs nothing. Usage is billed by OpenRouter. Keys are saved in Credentials.',
 };
-export function OpenCodeConnect({ onBack, onConnected, provider = 'OpenCode Zen' }: { onBack(): void; onConnected(): void; provider?: KeyProvider }) {
+export function OpenCodeConnect({ onBusy, onConnected, provider = 'OpenCode Zen' }: { onBusy?(busy: boolean): void; onConnected(): void; provider?: KeyProvider }) {
   const [key, setKey] = useState('');
   const [name, setName] = useState<string>(provider);
   const [items, setItems] = useState<CredentialMetadata[]>([]);
   const [selected, setSelected] = useState('');
   const [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState(false);
+  useEffect(() => { onBusy?.(busy); return () => onBusy?.(false); }, [busy, onBusy]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [retry, setRetry] = useState(0);
@@ -51,7 +52,6 @@ export function OpenCodeConnect({ onBack, onConnected, provider = 'OpenCode Zen'
     finally { setBusy(false); }
   }
   return <div className="space-y-4">
-    <button type="button" disabled={busy} onClick={onBack} className={backButtonClass}>← Back</button>
     <p className={mutedTextClass}>{notices[provider]}</p>
     {adding ? <form className="space-y-4" onSubmit={event => {
       event.preventDefault();

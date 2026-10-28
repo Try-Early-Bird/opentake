@@ -1,17 +1,19 @@
 import { ConnectionRow, connectionActionClass, connectionDisconnectClass } from './ConnectionRow';
-import { actionsClass, backButtonClass, fieldLabelClass, inputClass, linkButtonClass, primaryButtonClass } from './ui/modal-styles';
+import { actionsClass, fieldLabelClass, inputClass, linkButtonClass, primaryButtonClass } from './ui/modal-styles';
 import { GrokMark, OpenaiMark, ClaudeMark, OpencodeMark, OpenrouterMark, LocalModelMark } from './ai-provider-marks';
 import { OpenCodeConnect } from './OpenCodeConnect';
 import { LocalModelConnect } from './LocalModelConnect';
 import { checkAiConnections } from '../ai-connection-status';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type MutableRefObject } from 'react';
 import { LoaderCircle } from 'lucide-react';
-import { Dialog, DialogContent, DialogTitle } from './ui/dialog';
+import { Dialog, DialogBackTitle, DialogContent } from './ui/dialog';
 import { RowMenu, RowMenuItem } from './ui/row-menu';
 import type { AiConnectionState, AiProvider } from '../../../shared/ai-connections';
 
+/** Embedded in another dialog, Back lives in that dialog's header: this reports whether it applies and sets what it does. */
+export interface StepBack { handler: MutableRefObject<(() => void) | undefined>; change(state: { available: boolean; disabled: boolean }): void }
 // `start` opens the dialog on one provider's setup step, for example from the model picker.
-export function AiConnectDialog({ open, onClose, embedded = false, start }: { open: boolean; onClose(): void; embedded?: boolean; start?: AiConnectionState['provider'] }) {
+export function AiConnectDialog({ open, onClose, embedded = false, start, stepBack: hostBack }: { open: boolean; onClose(): void; embedded?: boolean; start?: AiConnectionState['provider']; stepBack?: StepBack }) {
   const [connections, setConnections] = useState<AiConnectionState[]>([]);
   const [opencode, setOpencode] = useState(false);
   const [local, setLocal] = useState(false);
@@ -27,6 +29,8 @@ export function AiConnectDialog({ open, onClose, embedded = false, start }: { op
   const [code, setCode] = useState('');
   const [submitted, setSubmitted] = useState(false);
   const [busy, setBusy] = useState(false);
+  // A key or local-model step reports its own save, so the header Back waits for it too.
+  const [stepBusy, setStepBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [serviceError, setServiceError] = useState('');
   const [checking, setChecking] = useState(true);
@@ -90,11 +94,19 @@ export function AiConnectDialog({ open, onClose, embedded = false, start }: { op
   const viaOpenCode = (id: AiConnectionState['provider']) => id === 'opencode' || id === 'openrouter' || id === 'local';
   const keyed = (id: AiConnectionState['provider']) => id === 'opencode' || id === 'openrouter';
   const connected = (id: AiConnectionState['provider']) => connections.some(item => item.provider === id && item.status === 'connected');
+  const stepBack = opencode ? () => setOpencode(false) : openrouter ? () => setOpenrouter(false) : local ? () => setLocal(false) : provider ? () => void back() : undefined;
+  if (hostBack) hostBack.handler.current = stepBack;
+  const backDisabled = busy || stepBusy;
+  // Before paint, so the host header never shows a Back that no longer applies.
+  useLayoutEffect(() => {
+    hostBack?.change({ available: !!stepBack, disabled: backDisabled });
+  }, [hostBack, !!stepBack, backDisabled]);
+  useLayoutEffect(() => () => hostBack?.change({ available: false, disabled: false }), [hostBack]);
   const content = <>
-      {!embedded && <DialogTitle>{opencode ? 'Connect OpenCode Zen' : openrouter ? 'Connect OpenRouter' : local ? 'Connect a local model' : provider ? `Connect ${label}` : 'Connect your AI'}</DialogTitle>}
-      {opencode ? <OpenCodeConnect onBack={() => setOpencode(false)} onConnected={embedded ? () => { setOpencode(false); setRetry(value => value + 1); } : onClose} />
-        : openrouter ? <OpenCodeConnect provider="OpenRouter" onBack={() => setOpenrouter(false)} onConnected={embedded ? () => { setOpenrouter(false); setRetry(value => value + 1); } : onClose} />
-        : local ? <LocalModelConnect onBack={() => setLocal(false)} onConnected={embedded ? () => { setLocal(false); setRetry(value => value + 1); } : onClose} /> : !provider ? <>
+      {!embedded && <DialogBackTitle onBack={stepBack} backDisabled={backDisabled}>{opencode ? 'Connect OpenCode Zen' : openrouter ? 'Connect OpenRouter' : local ? 'Connect a local model' : provider ? `Connect ${label}` : 'Connect your AI'}</DialogBackTitle>}
+      {opencode ? <OpenCodeConnect onBusy={setStepBusy} onConnected={embedded ? () => { setOpencode(false); setRetry(value => value + 1); } : onClose} />
+        : openrouter ? <OpenCodeConnect provider="OpenRouter" onBusy={setStepBusy} onConnected={embedded ? () => { setOpenrouter(false); setRetry(value => value + 1); } : onClose} />
+        : local ? <LocalModelConnect onBusy={setStepBusy} onConnected={embedded ? () => { setLocal(false); setRetry(value => value + 1); } : onClose} /> : !provider ? <>
         <p className="text-sm text-muted-foreground">{embedded ? 'Use your own AI account to run takes on your connected platform.' : 'Bring your own AI account to use with your connected trading account.'}</p>
         {embedded ? <ul aria-label="AI providers" className="space-y-5">
           {([
@@ -124,7 +136,6 @@ export function AiConnectDialog({ open, onClose, embedded = false, start }: { op
           void window.aiConnections.checkOpenCode().then(() => setRetry(value => value + 1)).catch(() => { setMessage('Could not check OpenCode installation. Restart the app and retry.'); setChecking(false); });
         }}>Check again</button>}
       </> : <div className="space-y-4">
-        <button type="button" disabled={busy} onClick={() => void back()} className={backButtonClass}>← Back</button>
         {state?.status === 'error' ? <>
           <p role="alert" className="text-sm text-destructive">{state.message}</p>
           <button type="button" disabled={busy || checking || !!serviceError} onClick={() => void begin(provider)} className={linkButtonClass}>Retry sign-in</button>

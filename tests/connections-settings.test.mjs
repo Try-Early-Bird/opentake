@@ -37,7 +37,7 @@ test('connection onboarding and settings reflect disconnected, connected, reauth
     await prompt.getByRole('status', { name: 'Connecting to Robinhood' }).waitFor();
     assert.equal(await prompt.locator('svg.animate-spin').count(), 1);
     await prompt.getByRole('link', { name: 'Reopen Robinhood sign-in ↗' }).click();
-    await prompt.getByRole('button', { name: '← Back' }).click();
+    await prompt.getByRole('button', { name: 'Back', exact: true }).click();
     await prompt.getByText('Sign in to your Robinhood agentic account or create one to get started.', { exact: true }).waitFor();
     assert.equal(await prompt.isVisible(), true);
     assert.equal(await prompt.getByRole('alert').count(), 0);
