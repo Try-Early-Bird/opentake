@@ -553,5 +553,10 @@
     "version": 111,
     "name": "Watchlists across venues",
     "checksum": "5e2ee9e67afedd3b673736245f311a7be719eb13c51d04e840b163753588ead7"
+  },
+  {
+    "version": 112,
+    "name": "Tool access requests decided after the reply",
+    "checksum": "33e7ca7560df54f62e5e06a237aed2ff31ba752f44393a7bd5de848cc003dad8"
   }
 ]

@@ -1,3 +1,5 @@
+/** Chat's request to turn on a tool, decided by the member from the reply that made it. */
+export interface ToolAccessRequest {id:string;messageId:string;serverId:string;server:string;toolName:string;policy:'ask'|'allowed';reason:string;status:'pending'|'approved'|'declined'|'superseded';createdAt:string}
 export interface PlatformAccessRequest {id:string;run_id:string;provider:string;expires_at:string}
 export type ToolPolicy='blocked'|'ask'|'allowed';
 export interface McpBinding { name:string; credentialId:string; prefix:string }
@@ -32,6 +34,8 @@ export interface McpManagementAPI {
  policy(server:string,tool:string,policy:ToolPolicy):Promise<void>;
  approvals():Promise<ToolApproval[]>;
  decide(id:string,approved:boolean):Promise<void>;
+ toolAccessRequests(messageId:string):Promise<ToolAccessRequest[]>;
+ decideToolAccess(id:string,approved:boolean):Promise<unknown>;
 }
 
 export interface TakeToolPermission {server_id:string;tool_name:string;policy:ToolPolicy}

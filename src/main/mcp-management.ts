@@ -29,7 +29,7 @@ const configSchema=z.object({name:z.string().trim().min(1).max(80),transport:z.e
 function validConfig(input:unknown){const config=configSchema.parse(input);if(config.oauth&&(config.transport!=='http'||config.bindings.length))throw new Error('OAuth requires HTTP without separate credential headers.');if(config.oauthMetadataUrl){const metadata=new URL(config.oauthMetadataUrl);if(metadata.protocol!=='https:'||metadata.username||metadata.password||metadata.hash||metadata.search)throw new Error('Use a public HTTPS client metadata URL.');}if(config.transport==='stdio'&&!isAbsolute(config.command))throw new Error('Use the absolute path to the MCP executable.');if(config.transport==='http'){const url=new URL(config.url);if(url.username||url.password||url.search||url.hash||!(url.protocol==='https:'||url.protocol==='http:'&&['127.0.0.1','localhost','[::1]'].includes(url.hostname)))throw new Error('Use HTTPS or a local HTTP URL without credentials or query parameters.');}return config;}
 const uuid=z.string().uuid();const hash=(v:unknown)=>createHash('sha256').update(JSON.stringify(v)).digest('hex');const alias=(server:string,name:string)=>server===builtin?name:`custom_${server.replaceAll('-','').slice(0,12)}_${hash(name).slice(0,16)}`;
 type Database=Pick<ReturnType<typeof createDatabaseLifecycle>,'use'>;
-export function createMcpManagement(db:Database,store:SecretStore,root:string,active:(id:string)=>boolean,callBuiltin:(name:string,args:unknown,signal?:AbortSignal,run?:string)=>Promise<CallToolResult>, clientFactory = () => new Client({name:'opentake',version:'0.1.0'},{capabilities:{}}), options: { openBrowser?:(url:string)=>Promise<void>; beforeBuiltin?: (run:string)=>Promise<void>; budget?: (id:string)=>RunBudget|undefined; approvalMs?: number; pollMs?: number } = {}){
+export function createMcpManagement(db:Database,store:SecretStore,root:string,active:(id:string)=>boolean,callBuiltin:(name:string,args:unknown,signal?:AbortSignal,run?:string,call?:{suggest?:boolean})=>Promise<CallToolResult>, clientFactory = () => new Client({name:'opentake',version:'0.1.0'},{capabilities:{}}), options: { openBrowser?:(url:string)=>Promise<void>; beforeBuiltin?: (run:string)=>Promise<void>; budget?: (id:string)=>RunBudget|undefined; approvalMs?: number; pollMs?: number } = {}){
  const captures=createAiAudit(db);
  const oauth=createMcpOAuth(db,store,options.openBrowser??(async()=>{throw new Error('Browser unavailable.');}));
  const governance=createToolGovernance(db);
@@ -149,8 +149,14 @@ export function createMcpManagement(db:Database,store:SecretStore,root:string,ac
     // A proposal its rule lists needs no approval in an automatic run: the member
     // reviews it before anything changes. Never a tool sharing platform data elsewhere.
     const unattendedProposal=unattended&&match.server===builtin&&unattendedProposalTools.includes(match.name)&&match.policy==='ask'&&!sharing;
+    // A take proposal is already reviewed before it is committed, so asking first means
+    // "don't change my draft": in chat it is saved as a suggestion instead of blocking the reply.
+    const suggestedProposal=!unattended&&match.server===builtin&&match.name==='opentake_propose_strategy'&&match.policy==='ask'&&!sharing;
+    // Rule proposals wait for the member's acceptance in Rules, and a request to turn on a tool is
+    // filed on the reply for the member to decide later: neither changes anything now, so neither holds the reply.
+    const decidedLater=!unattended&&match.server===builtin&&(match.name==='opentake_propose_rules'&&match.policy==='ask'||memberDecides.has(match.name))&&!sharing;
     // Changing tool access is always the member's decision, whatever this tool's own setting.
-    const requiresApproval=!unattendedProposal&&(match.policy==='ask'||sharing||match.server===builtin&&memberDecides.has(match.name));
+    const requiresApproval=!unattendedProposal&&!suggestedProposal&&!decidedLater&&(match.policy==='ask'||sharing||match.server===builtin&&memberDecides.has(match.name));
     // Otherwise an automatic rule run has no one to ask: refuse at once instead of waiting.
     if(requiresApproval&&unattended)return fail('This automatic run cannot ask for approval.','blocked');
     if(requiresApproval){
@@ -190,7 +196,7 @@ export function createMcpManagement(db:Database,store:SecretStore,root:string,ac
       await db.use(d=>d.query("UPDATE tool_approvals SET state='expired' WHERE id=$1 AND state IN ('pending','approved')",[id]));
      }
     }
-    const permitted=async()=>{const latest=(await eligible(run)).find(t=>t.alias===name&&t.fingerprint===match.fingerprint&&t.revision===match.revision);return !!latest&&(requiresApproval||unattendedProposal||latest.policy!=='ask')&&(sharing||match.server===builtin||!await governance.platformSharing(run));};
+    const permitted=async()=>{const latest=(await eligible(run)).find(t=>t.alias===name&&t.fingerprint===match.fingerprint&&t.revision===match.revision);return !!latest&&(requiresApproval||unattendedProposal||suggestedProposal||decidedLater||latest.policy!=='ask')&&(sharing||match.server===builtin||!await governance.platformSharing(run));};
     if(!await permitted())return fail('Tool permission changed.','blocked');
     if(match.server===builtin){
      await options.beforeBuiltin?.(run);
@@ -200,7 +206,7 @@ export function createMcpManagement(db:Database,store:SecretStore,root:string,ac
      if(!await permitted())return fail('Tool permission changed or run stopped.',active(run)?'blocked':'cancelled');
      const signal=AbortSignal.any([AbortSignal.timeout(runLimits.toolMs),...(runSignal?[runSignal]:[])]);
      signal.throwIfAborted();options.budget?.(run)?.toolDispatch();dispatched=true;
-     const result=await callBuiltin(match.name,input,signal,run);signal.throwIfAborted();
+     const result=await callBuiltin(match.name,input,signal,run,suggestedProposal?{suggest:true}:undefined);signal.throwIfAborted();
      if(!result.isError&&untrustedBuiltins.has(match.name))noteRunContent(run,match.name==='opentake_documents'?'a document':'a data source',result.content);
      return await complete(result);
     }
