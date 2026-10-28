@@ -54,6 +54,8 @@ readTools.push(...coinbaseReadTools);
 const byName = new Map(readTools.map(tool => [tool.name, tool]));
 const byUpstream = new Map(readTools.map(tool => [tool.upstream, tool]));
 export function hasKnownRead(name: string): boolean { return byUpstream.has(name); }
+/** Whether a read is scoped to one account; account-free reads such as quotes refuse one. */
+export function readTakesAccount(name: string): boolean { return byUpstream.get(name)?.account === true; }
 export function parseRead(name: string, input: unknown, upstream = false) {
   const tool = (upstream ? byUpstream : byName).get(name);
   if (!tool) throw new Error('Tool unavailable');
