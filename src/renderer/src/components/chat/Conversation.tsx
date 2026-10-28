@@ -52,13 +52,23 @@ function RuleRunActions({limits,onOpenRule}:{limits?:NonNullable<TakeMessage['ru
   {open&&limits&&<p className="mt-1.5 tabular-nums">Automatic run, no one watching. Limits {runLimitsText(limits)}</p>}</div>;
 }
 /** The latest reply's suggested answers. Choosing one sends it as your message; "other" puts you in the composer. */
-function ReplyButtons({replies,disabled,onChoose,onOther}:{replies:ReplyOptions;disabled:boolean;onChoose:(text:string)=>void;onOther:(hint:string)=>void}){
- return <div role="group" aria-label="Suggested replies" className="flex flex-wrap items-center gap-2">
-  {replies.options.map(option=><button key={option} type="button" disabled={disabled} onClick={()=>onChoose(option)} className="rounded-xl bg-muted px-4 py-2 text-left text-sm hover:bg-muted/70 focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40">{option}</button>)}
-  {replies.other&&<button type="button" disabled={disabled} onClick={()=>onOther(replies.other!)} className="px-2 py-2 text-xs text-muted-foreground hover:text-foreground disabled:opacity-40">{replies.other}</button>}
+/** A reply's suggested answers. Once one is picked it stays highlighted here instead of
+ *  showing as your message; picking another answers again from this reply, like Edit. */
+function ReplyButtons({replies,picked,disabled,onChoose,onOther,children}:{replies:ReplyOptions;picked:string|null;disabled:boolean;onChoose:(text:string)=>void;onOther?:(hint:string)=>void;children?:React.ReactNode}){
+ return <div role="group" aria-label={picked?'Your answer':'Suggested replies'} className="flex flex-wrap items-center gap-2">
+  {replies.options.map(option=>{const chosen=option===picked;return <button key={option} type="button" aria-pressed={picked?chosen:undefined} disabled={disabled||chosen} onClick={()=>onChoose(option)}
+   className={`rounded-xl px-4 py-2 text-left text-sm focus-visible:outline-2 focus-visible:outline-ring ${chosen?'bg-foreground text-background':picked?'bg-muted text-muted-foreground hover:bg-muted/70 hover:text-foreground disabled:opacity-40':'bg-muted hover:bg-muted/70 disabled:opacity-40'}`}>{option}</button>;})}
+  {!picked&&replies.other&&onOther&&<button type="button" disabled={disabled} onClick={()=>onOther(replies.other!)} className="px-2 py-2 text-xs text-muted-foreground hover:text-foreground disabled:opacity-40">{replies.other}</button>}
+  {children}
  </div>;
 }
 /** Which account a reply used, and whether older turns were condensed for it. */
+/** The reply button your message picked from the reply before it, when it is exactly one of them. */
+function pickedOption(reply:TakeMessage|undefined,answer:TakeMessage|undefined):string|null{
+ if(reply?.role!=='assistant'||answer?.role!=='user'||reply.state!=='completed'||reply.imported||answer.imported||answer.ruleRun||answer.images.length||answer.documents?.length)return null;
+ const text=answer.text.trim();
+ return splitReplies(reply.text).replies?.options.includes(text)?text:null;
+}
 function ReplyContext({message}:{message:TakeMessage}){
  const [open,setOpen]=useState(false);const condensed=message.context?.condensedMessages;
  return <div className="text-xs text-muted-foreground"><p className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -90,14 +100,17 @@ export function Conversation({take,catalogs,running,onSend,onBranch,onError,onRe
    <p className="mt-2 whitespace-pre-wrap pl-4 leading-6"><Mono text={message.text}/></p>
    <RuleRunActions limits={message.ruleRun.limits} onOpenRule={()=>openTakeRules(take.id,false,message.ruleRun!.ruleId)}/>
   </MessagePrimitive.Root>;
-  const siblings=take.messages.filter(m=>m.parentId===message.parentId&&m.role===message.role);
-  const versions=(message.versionCount??0)>1?<MessageVersions key={message.id} takeId={take.id} messageId={message.id} number={message.versionNumber??1} count={message.versionCount!} disabled={running} onBranch={onBranch}/>:siblings.length>1&&<VersionPager number={siblings.findIndex(m=>m.id===message.id)+1} count={siblings.length} disabled={running} onStep={target=>onBranch(siblings[target-1].id)}/>;
+  const versionsFor=(message:TakeMessage)=>{const siblings=take.messages.filter(m=>m.parentId===message.parentId&&m.role===message.role);
+  return (message.versionCount??0)>1?<MessageVersions key={message.id} takeId={take.id} messageId={message.id} number={message.versionNumber??1} count={message.versionCount!} disabled={running} onBranch={onBranch}/>:siblings.length>1&&<VersionPager number={siblings.findIndex(m=>m.id===message.id)+1} count={siblings.length} disabled={running} onStep={target=>onBranch(siblings[target-1].id)}/>;};
+  const versions=versionsFor(message);
   const copy=<button type="button" className={action} onClick={()=>void navigator.clipboard.writeText(shown(message)).then(()=>setCopied(message.id)).catch(()=>onError('Could not copy message.'))}>{copied===message.id?'Copied':'Copy'}</button>;
   const time=<time className="tabular-nums" dateTime={message.createdAt} title={new Date(message.createdAt).toLocaleString()}>{clock(message.createdAt)}</time>;
   const attachments=<>{!!message.documents?.length&&<div className="flex flex-wrap justify-end gap-2">{message.documents.map(doc=><ReferenceDocument key={doc.id} document={doc}/>)}</div>}
    {!!message.images.length&&<div className="flex flex-wrap justify-end gap-2">{message.images.map(image=><ReferenceImage key={image.id} image={image}/>)}</div>}</>;
   const divider=importStart&&<p className="flex items-center gap-3 text-xs text-muted-foreground before:h-px before:flex-1 before:bg-border after:h-px after:flex-1 after:bg-border">Imported · exported {new Date(message.imported!.exportedAt).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'})}</p>;
   if(message.role==='user')return <>{divider}<MessagePrimitive.Root data-message-id={message.id} aria-label="Your message" className="ml-auto flex min-w-0 max-w-[85%] flex-col items-end gap-2 [overflow-wrap:anywhere]">
+  // Shown as the highlighted button on the reply before it.
+  if(message.role==='user'&&pickedOption(messages[index-1],message))return null;
    {attachments}
    {editing===message.id?<form className="w-full min-w-[min(28rem,100%)]" onSubmit={e=>{e.preventDefault();void onSend(edit,message.parentId,message.images.map(i=>i.id),false,message.documents?.map(d=>d.id)??[],true).then(()=>setEditing(undefined)).catch(e=>onError(String(e.message)));}}>
     <textarea autoFocus aria-label="Edit message" rows={3} className="w-full resize-y rounded-2xl border border-border bg-muted px-4 py-3 text-sm leading-6 outline-none focus-visible:ring-1 focus-visible:ring-ring" value={edit} onChange={e=>setEdit(e.target.value)}/>
@@ -108,12 +121,14 @@ export function Conversation({take,catalogs,running,onSend,onBranch,onError,onRe
   const active=message.state==='running'||message.state==='starting',ended=['failed','interrupted','cancelled'].includes(message.state);
   const current=[...message.tools].reverse().find(t=>t.state==='running');
   // Only the latest finished reply offers buttons; older answers stay in the thread as text.
-  const replies=index===messages.length-1&&message.state==='completed'&&!message.imported?splitReplies(message.text).replies:null;
+  // The latest finished reply offers its buttons; an earlier one keeps them when one was picked.
+  const answer=messages[index+1],picked=pickedOption(message,answer);
+  const replies=(index===messages.length-1||picked)&&message.state==='completed'&&!message.imported?splitReplies(message.text).replies:null;
   return <>{divider}<MessagePrimitive.Root data-message-id={message.id} className="min-w-0 space-y-3 [overflow-wrap:anywhere]" aria-label="AI response">
   <p className="text-xs text-muted-foreground"><span className="font-medium text-foreground/80">{message.imported?'Imported reply':responseLabel}</span> · {time}</p>
   {!!message.tools.length&&<ToolActivityList tools={message.tools}/>}
   <MessagePrimitive.Content components={{Text:Markdown}}/>
-  {replies&&<ReplyButtons replies={replies} disabled={running} onChoose={text=>void onSend(text,message.id,[],false,[],true).catch(e=>onError(e.message))} onOther={onCompose}/>}
+  {replies&&<ReplyButtons replies={replies} picked={picked} disabled={running} onChoose={text=>void onSend(text,message.id,[],false,[],true).catch(e=>onError(e.message))} onOther={picked?undefined:onCompose}>{picked&&answer&&versionsFor(answer)}</ReplyButtons>}
   {!message.text&&active&&<div role="status" className="space-y-2 text-sm text-muted-foreground"><p className="flex items-center gap-2.5"><StatusDot tone="attention"/>{current?`Using ${toolName(current.name).toLowerCase()}…`:'Thinking…'}</p><span aria-hidden="true" className="flex gap-1 pl-px">{[0,1,2].map(i=><span key={i} className="size-1 rounded-full bg-muted-foreground animate-pulse motion-reduce:animate-none" style={{animationDelay:`${i*200}ms`}}/>)}</span><button type="button" onClick={stop} className="block text-xs hover:text-foreground">Stop</button></div>}
   {(message.coinbaseAccount||message.context)&&<ReplyContext message={message}/>}
   {message.error&&message.state!=='cancelled'&&<p role="alert" className="text-sm">{message.stopReason?<><span className="font-medium text-destructive">Stopped early.</span> {message.error}</>:<span className="text-destructive">{message.error}</span>}</p>}
