@@ -8,6 +8,12 @@ import { claudeExecutor } from '../../../src/main/take-runtime';
 import type { SecretStore } from '../../../src/main/secret-store';
 import type { AuditCapture } from '../../../src/main/ai-audit';
 
+// Fixture scripts read their data from a file beside them rather than having it spliced into their code.
+async function writeFixture(script:string,data:unknown,body:string){
+ await writeFile(join(script,'..','fixture-data.json'),JSON.stringify(data));
+ await writeFile(script,`const data=require(require('node:path').join(__dirname,'fixture-data.json'));${body}`);
+}
+
 test('Take runtime passes only a scoped gateway credential through environment and cleans isolated files',async()=>{
  const root=await mkdtemp(join(tmpdir(),'opentake-runtime-'));
  const token=`sk-ant-oat01-${'synthetic'.repeat(8)}`;
@@ -48,7 +54,7 @@ test('Claude offers a research subagent with Opentake tools only, keeps its text
   {type:'user',message:{content:[{type:'tool_result',tool_use_id:'read-1',content:'Draft'}]},parent_tool_use_id:null},
   {type:'stream_event',event:{type:'content_block_delta',delta:{type:'text_delta',text:'Lead answer'}},parent_tool_use_id:null},
   {type:'result',subtype:'success',result:'Lead answer'}];
- await writeFile(script,`process.stdin.resume();process.stdin.on('end',()=>{for(const e of ${JSON.stringify(events)})console.log(JSON.stringify(e));});`);
+ await writeFixture(script,events,`process.stdin.resume();process.stdin.on('end',()=>{for(const e of data)console.log(JSON.stringify(e));});`);
  const text:string[]=[];const tools:string[]=[];const replay:unknown[]=[];
  const execute=claudeExecutor(store,root,'/synthetic/bridge.js',((_exe,args,options)=>{
   expect(args[args.indexOf('--tools')+1]).toBe('Agent');
@@ -73,7 +79,7 @@ test('Take runtime delivers image bytes to the child and reports incomplete stre
  const store:SecretStore={available:()=>true,has:async()=>true,get:async()=>JSON.stringify({version:1,kind:'oauth_token',token}),set:async()=>{},delete:async()=>{}};
  const script=join(root,'fixture.cjs');
  const bytes='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jVb8AAAAASUVORK5CYII=';
- await writeFile(script,`let body='';process.stdin.on('data',d=>body+=d);process.stdin.on('end',()=>{const image=JSON.parse(body).message.content.find(p=>p.type==='image');if(image?.source.data!==${JSON.stringify(bytes)})process.exit(1);console.log(JSON.stringify({type:'result',subtype:'success',result:'Image received'}));});`);
+ await writeFixture(script,bytes,`let body='';process.stdin.on('data',d=>body+=d);process.stdin.on('end',()=>{const image=JSON.parse(body).message.content.find(p=>p.type==='image');if(image?.source.data!==data)process.exit(1);console.log(JSON.stringify({type:'result',subtype:'success',result:'Image received'}));});`);
  const execute=claudeExecutor(store,root,'/synthetic/bridge.js',((_exe,_args,options)=>spawn(process.execPath,[script],options)) as typeof spawn,()=>({executable:'/synthetic/claude',args:[]}));
  const output:string[]=[];const id=randomUUID();
  const input={id:randomUUID(),takeId:randomUUID(),gateway:{port:12345,token:'a'.repeat(64)},selection:{provider:'claude' as const,model:'sonnet'},instructions:'Synthetic',signal:new AbortController().signal,image:async()=>`data:image/png;base64,${bytes}`,text:(v:string)=>output.push(v),tool:()=>{},messages:[{id,parentId:null,role:'user' as const,text:'Read this reference',images:[{id:randomUUID(),name:'reference.png',mime:'image/png',width:1,height:1,bytes:68}],createdAt:new Date().toISOString(),selection:{provider:'claude' as const,model:'sonnet'},state:'completed' as const,tools:[]}]};
@@ -120,10 +126,10 @@ test('audit captures supplied context, provider output and usage before resolvin
  const token=`sk-ant-oat01-${'synthetic'.repeat(8)}`,capability='synthetic-gateway-capability';
  const store:SecretStore={available:()=>true,has:async()=>true,get:async()=>JSON.stringify({version:1,kind:'oauth_token',token}),set:async()=>{},delete:async()=>{}};
  const script=join(root,'fixture.cjs');
- await writeFile(script,`process.stdin.resume();process.stdin.on('end',()=>{for(const event of ${JSON.stringify([
+ await writeFixture(script,[
   {type:'assistant',message:{id:'msg-fixture',model:'resolved-model',content:[{type:'thinking',thinking:'Visible synthetic reasoning'},{type:'text',text:capability}]}},
   {type:'result',subtype:'success',result:'Synthetic answer',usage:{input_tokens:12,output_tokens:4},total_cost_usd:0.01}
- ])})console.log(JSON.stringify(event));});`);
+ ],`process.stdin.resume();process.stdin.on('end',()=>{for(const event of data)console.log(JSON.stringify(event));});`);
  const events:AuditCapture[]=[];
  const execute=claudeExecutor(store,root,'/synthetic/bridge',((_exe,_args,options)=>spawn(process.execPath,[script],options)) as typeof spawn,()=>({executable:'/synthetic/claude',args:[]}));
  const input={id:randomUUID(),takeId:randomUUID(),gateway:{port:12345,token:capability},selection:{provider:'claude' as const,model:'default'},messages:[],instructions:'Synthetic instructions',signal:new AbortController().signal,image:async()=>'',text:()=>{},tool:()=>{}};
