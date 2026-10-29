@@ -16,7 +16,7 @@ const store: SecretStore = { available: () => true, has: async () => true, get: 
 function message(role: 'user' | 'assistant', text: string): TakeMessage { return { id: randomUUID(), parentId: null, role, text, images: [], createdAt: new Date().toISOString(), selection: { provider: 'grok', model: 'grok-fixture' }, state: 'completed', tools: [] }; }
 function input(signal = new AbortController().signal) {
   const text: string[] = [], replay: unknown[] = [], tools: unknown[] = [], audit: any[] = [];
-  const run: RunInput = { id: randomUUID(), takeId: randomUUID(), gateway: { port: 12345, token: 'a'.repeat(64) }, selection: { provider: 'grok', model: 'grok-fixture' }, messages: [message('user', 'Hello')], instructions: 'App instructions', signal,
+  const run: RunInput = { id: randomUUID(), takeId: randomUUID(), gateway: { port: 12345, token: 'a'.repeat(64) }, selection: { provider: 'grok', model: 'grok-fixture' }, messages: [message('user', 'Hello')], instructions: 'App instructions', signal, maxTurns: 37,
     image: async () => { throw new Error('No image reads'); }, text: v => text.push(v), replay: v => replay.push(v), tool: v => tools.push(v), audit: async e => { audit.push(e); } };
   return { run, text, replay, tools, audit };
 }
@@ -30,7 +30,7 @@ require('node:readline').createInterface({input:process.stdin}).on('line',line=>
  if(e.method==='initialize'){emit({id:e.id,result:{protocolVersion:1,authMethods:[{id:'cached_token'}],_meta:{agentVersion:mode==='newer-cli'?'9.9.9':'1.0.46','x.ai/mcp/sdk':mode!=='no-sdk',modelState:{availableModels:[]}}}});return;}
  if(e.method==='_x.ai/models/list'){emit({id:e.id,result:mode==='catalog-error'?{result:null,error:'private-provider-diagnostic'}:{result:{availableModels:[{modelId:'grok-fixture',name:'Grok fixture',description:null}]}}});return;}
  if(e.method==='authenticate'){emit({id:e.id,result:{}});return;}
- if(e.method==='session/new'){if(e.params._meta.agentProfile.tools.join(',')!=='search_tool,use_tool')process.exit(4);serverId=e.params._meta['x.ai/mcp/servers'][0].serverId;emit({id:'discover',method:'_x.ai/mcp/sdk_call',params:{serverId,message:{jsonrpc:'2.0',id:1,method:'server/discover'}}});emit({id:e.id,result:{sessionId:'session',models}});return;}
+ if(e.method==='session/new'){if(e.params._meta.agentProfile.tools.join(',')!=='search_tool,use_tool'||e.params._meta.agentProfile.maxTurns!==37)process.exit(4);serverId=e.params._meta['x.ai/mcp/servers'][0].serverId;emit({id:'discover',method:'_x.ai/mcp/sdk_call',params:{serverId,message:{jsonrpc:'2.0',id:1,method:'server/discover'}}});emit({id:e.id,result:{sessionId:'session',models}});return;}
  if(e.id==='discover'){if(e.result?.error?.code!==-32601)process.exit(4);return;}
  if(e.method==='session/set_model'){modelSet=true;emit({id:e.id,result:{}});return;}
  if(e.method==='session/set_config_option'){if(!modelSet||e.params.configId!=='reasoning_effort')process.exit(5);effort=e.params.value;emit({id:e.id,result:{configOptions:[]}});return;}
@@ -144,7 +144,7 @@ test('Grok refuses a concurrent credential change after rotation', async () => {
   finally { await f.cleanup(); }
 });
 test('Grok ACP profile and config restrict tools and file-backed MCP inputs', () => {
-  expect(grokAgentProfile).toMatchObject({tools:['search_tool','use_tool'],maxTurns:20,permissionMode:'dontAsk',agentsMd:false,discoverSkills:false});
+  expect(grokAgentProfile).toMatchObject({tools:['search_tool','use_tool'],maxTurns:100,permissionMode:'dontAsk',agentsMd:false,discoverSkills:false});
   expect(grokChatConfig).toContain('{ action = "deny", tool = "read" }');
 });
 

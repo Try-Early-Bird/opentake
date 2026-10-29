@@ -19,6 +19,8 @@ test('Take runtime passes only a scoped gateway credential through environment a
  const execute=claudeExecutor(store,root,'/synthetic/bridge.js',((_exe,args,options)=>{
   expect(args.join(' ')).not.toContain(token);expect(args.join(' ')).not.toContain(capability);
   expect(args[args.indexOf('--max-turns')+1]).toBe('100');
+  // Without the member's subagent setting, no built-in tools at all.
+  expect(args[args.indexOf('--tools')+1]).toBe('');expect(args).not.toContain('--agents');
   expect(options.env.OPENTAKE_GATEWAY_TOKEN).toBe(capability);
   const mcp=JSON.parse(args[args.indexOf('--mcp-config')+1]).mcpServers.opentake;
   expect(mcp.args).toEqual(['/synthetic/bridge.js','--run',run]);
@@ -58,7 +60,7 @@ test('Claude offers a research subagent with Opentake tools only, keeps its text
   return spawn(process.execPath,[script],options);
  }) as typeof spawn,()=>({executable:'/synthetic/claude',args:[]}));
  try{
-  await execute({id:randomUUID(),takeId:randomUUID(),gateway:{port:12345,token:'a'.repeat(64)},selection:{provider:'claude',model:'sonnet'},messages:[],instructions:'Synthetic',signal:new AbortController().signal,image:async()=>'',text:v=>text.push(v),tool:v=>tools.push(`${v.name}:${v.state}`),replay:v=>replay.push(v)});
+  await execute({id:randomUUID(),takeId:randomUUID(),gateway:{port:12345,token:'a'.repeat(64)},selection:{provider:'claude',model:'sonnet'},messages:[],instructions:'Synthetic',signal:new AbortController().signal,image:async()=>'',text:v=>text.push(v),tool:v=>tools.push(`${v.name}:${v.state}`),replay:v=>replay.push(v),subagents:true});
   expect(text.join('')).not.toContain('Subagent');expect(text.at(-1)).toBe('Lead answer');
   expect(tools).toEqual(['Agent:running','robinhood_get_quotes:running','robinhood_get_quotes:completed','Agent:completed','opentake_read_strategy:running','opentake_read_strategy:completed']);
   expect(replay).toEqual([{role:'assistant',content:[{type:'tool_use',id:'read-1',name:'mcp__opentake__opentake_read_strategy',input:{}}]},{role:'user',content:[{type:'tool_result',tool_use_id:'read-1',is_error:false,content:'Draft'}]}]);

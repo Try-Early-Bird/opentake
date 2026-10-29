@@ -8,19 +8,20 @@ export function ChatBudgets(){
 }
 /** Limits for each chat response the member asks for. */
 function ChatRunLimitsForm(){
- const [values,setValues]=useState<Record<'minutes'|'toolCalls'|'modelTurns',string>>({minutes:'',toolCalls:'',modelTurns:''});
+ const [values,setValues]=useState<Record<'minutes'|'toolCalls'|'modelTurns',string>>({minutes:'',toolCalls:'',modelTurns:''}),[subagents,setSubagents]=useState(true);
  const [ready,setReady]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[saved,setSaved]=useState('');
- const show=(v:ChatRunLimits)=>setValues({minutes:String(v.durationMs/60000),toolCalls:String(v.toolCalls),modelTurns:String(v.modelTurns)});
+ const show=(v:ChatRunLimits)=>{setValues({minutes:String(v.durationMs/60000),toolCalls:String(v.toolCalls),modelTurns:String(v.modelTurns)});setSubagents(v.subagents);};
  useEffect(()=>{let active=true;void window.takes.chatRunLimits().then(v=>{if(active){show(v);setReady(true);}}).catch(()=>{if(active)setError('Could not load chat limits. Reopen this page to retry.');});return()=>{active=false;};},[]);
  const field=(key:keyof typeof values,label:string,attrs:{min:number;max:number;step:number})=><label key={key} className="block text-sm">{label}<input className="mt-2 block w-40 rounded border border-input bg-background px-3 py-2" aria-label={`Chat ${label.toLowerCase()}`} type="number" min={attrs.min} max={attrs.max} step={attrs.step} required disabled={!ready||busy} value={values[key]} onChange={e=>{setValues(old=>({...old,[key]:e.target.value}));setSaved('');}}/></label>;
  return <form className="space-y-3 border-t border-border pt-4" onSubmit={e=>{e.preventDefault();setBusy(true);setError('');setSaved('');
-  void window.takes.saveChatRunLimits({durationMs:Math.round(Number(values.minutes)*60000),toolCalls:Number(values.toolCalls),modelTurns:Number(values.modelTurns)})
+  void window.takes.saveChatRunLimits({durationMs:Math.round(Number(values.minutes)*60000),toolCalls:Number(values.toolCalls),modelTurns:Number(values.modelTurns),subagents})
    .then(v=>{show(v);setSaved('Chat limits saved.');}).catch(()=>setError('Could not save. Use 1–60 whole minutes, 1–500 tool calls and 1–200 turns.')).finally(()=>setBusy(false));}}>
   <h4 className="text-sm font-medium">Chat responses</h4>
   <p className="max-w-xl text-xs leading-5 text-muted-foreground">Each response you ask for, including the research it delegates. Failed attempts count. Time spent waiting for your approval counts toward run time.</p>
   {field('minutes','Run time (minutes)',{min:1,max:60,step:1})}
   {field('toolCalls','Tool calls',{min:1,max:500,step:1})}
   {field('modelTurns','Model turns',{min:1,max:200,step:1})}
+  <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={subagents} disabled={!ready||busy} onChange={e=>{setSubagents(e.target.checked);setSaved('');}}/><span>Let the AI delegate research to subagents<span className="block text-xs leading-5 text-muted-foreground">Researchers that use the same read-only tools and cannot propose changes or trade. Their work counts toward these limits. Also applies to automatic runs. Available with Claude, OpenCode Zen and OpenRouter.</span></span></label>
   <button disabled={!ready||busy} className="rounded bg-muted px-3 py-2 text-sm">{busy?'Saving…':'Save chat limits'}</button>
   {saved&&<p role="status" className="text-sm">{saved}</p>}{error&&<p role="alert" className="text-sm text-destructive">{error}</p>}
  </form>;

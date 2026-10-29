@@ -147,7 +147,7 @@ export function grokExecutor(store: SecretStore, profile: string, deps: GrokDepe
         try {
           grokInit(await client.request('initialize', { ...grokInitialize, _meta: { systemPromptOverride: input.instructions } }));
           await client.request('authenticate', { methodId: 'cached_token', _meta: { headless: true } });
-          const meta = { agentProfile: { ...grokAgentProfile, model: input.selection.model }, systemPromptOverride: input.instructions, 'x.ai/mcp/servers': [{ name: 'opentake', serverId }] };
+          const meta = { agentProfile: { ...grokAgentProfile, maxTurns: input.maxTurns ?? grokAgentProfile.maxTurns, model: input.selection.model }, systemPromptOverride: input.instructions, 'x.ai/mcp/servers': [{ name: 'opentake', serverId }] };
           const session = z.object({ sessionId: z.string(), models: z.unknown() }).parse(await client.request('session/new', { cwd: home, mcpServers: [], _meta: meta }));
           sessionId = session.sessionId; client.session(sessionId);
           const model = grokModels(session.models).find(m => m.value === input.selection.model);

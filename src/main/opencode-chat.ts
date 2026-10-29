@@ -7,7 +7,7 @@ import { resolveOpenCode } from './opencode-runtime';
 import { atomicPrivateWrite } from './private-files';
 import { runLimits } from './run-budget';
 import { chatLimits } from '../shared/chat-limits';
-import type { AgentExecutor as TakeExecutor, RunInput } from './take-runtime';
+import { leadOnlyOpentakeTools, researcherAgent, type AgentExecutor as TakeExecutor, type RunInput } from './take-runtime';
 import type { AiModel, ReasoningEffort } from '../shared/ai-models';
 import { AdapterError, manageChild, nativeCapture, nativeFailure, protocolError, secretCleaner, withNativeChat, type NativeDependencies, historyModes } from './native-chat-process';
 import { nativeHistory, opencodeHistory, quotedHistory } from './native-chat-history';
@@ -18,7 +18,7 @@ export type CompatibleTarget = {kind:'compatible';providerID:'local'|'openrouter
   apiKey?:()=>Promise<string>;model?:(id:string)=>Promise<AiModel|undefined>;missing:string};
 export type OpenCodeTarget = {kind:'zen'} | CompatibleTarget;
 type CompatibleModel = {providerID:string;name:string;baseUrl:string;model:string;keyed:boolean;pricing?:AiModel['pricing'];efforts?:ReasoningEffort[]};
-export function opencodeChatConfig(instructions:string,bridge:string,runId:string,port:number,compatible?:CompatibleModel,turns:number=chatLimits.modelTurns) {
+export function opencodeChatConfig(instructions:string,bridge:string,runId:string,port:number,compatible?:CompatibleModel,turns:number=chatLimits.modelTurns,subagents=false) {
   // OpenCode prices a custom model only from configured cost (USD per million tokens).
   const provider=compatible
     ?{[compatible.providerID]:{npm:'@ai-sdk/openai-compatible',name:compatible.name,options:{baseURL:compatible.baseUrl,apiKey:compatible.keyed?'{env:OPENTAKE_PROVIDER_KEY}':'opentake-local'},
@@ -29,7 +29,12 @@ export function opencodeChatConfig(instructions:string,bridge:string,runId:strin
   return {autoupdate:false,share:'disabled',snapshot:false,plugin:[],enabled_providers:[compatible?compatible.providerID:'opencode'],
     provider,
     permission:{'*':'deny','opentake_*':'allow'},default_agent:'opentake',
-    agent:{opentake:{mode:'primary',prompt:instructions,steps:turns,permission:{'*':'deny','opentake_*':'allow'}},title:{disable:true}},
+    // The lead may start only the researcher. OpenCode's built-in subagents would get every
+    // Opentake tool, so they stay off. Tool ids carry the MCP server's name as a prefix.
+    agent:{opentake:{mode:'primary',prompt:instructions,steps:turns,permission:{'*':'deny','opentake_*':'allow',...(subagents?{task:{'*':'deny',researcher:'allow'}}:{})}},
+      ...(subagents?{researcher:{mode:'subagent',description:researcherAgent.description,prompt:researcherAgent.prompt,steps:turns,
+        permission:{'*':'deny','opentake_*':'allow',...Object.fromEntries(leadOnlyOpentakeTools.map(name=>['opentake_'+name,'deny']))}}}:{}),
+      general:{disable:true},explore:{disable:true},title:{disable:true}},
     compaction:{auto:false,prune:false},
     mcp:{opentake:{type:'local',enabled:true,command:[process.execPath,bridge,'--run',runId],timeout:runLimits.gatewayMs,
       environment:{ELECTRON_RUN_AS_NODE:'1',OPENTAKE_GATEWAY_PORT:String(port),OPENTAKE_ZEN_KEY:'',OPENTAKE_PROVIDER_KEY:'',OPENCODE_SERVER_PASSWORD:''}}}};
@@ -68,7 +73,9 @@ export function opencodeExecutor(keyFor:()=>Promise<string>,profile:string,bridg
       let imported=false;
       if(key)env[target.kind==='zen'?'OPENTAKE_ZEN_KEY':'OPENTAKE_PROVIDER_KEY']=key;env.OPENTAKE_GATEWAY_TOKEN=input.gateway!.token;
       env.OPENCODE_SERVER_PASSWORD=password;
-      env.OPENCODE_CONFIG_CONTENT=JSON.stringify(opencodeChatConfig(input.instructions,bridge,input.id,input.gateway!.port,compatible,input.maxTurns??chatLimits.modelTurns));
+      // Local models often call tools unreliably, so they never get subagents.
+      const subagents=!!input.subagents&&providerID!=='local';
+      env.OPENCODE_CONFIG_CONTENT=JSON.stringify(opencodeChatConfig(input.instructions,bridge,input.id,input.gateway!.port,compatible,input.maxTurns??chatLimits.modelTurns,subagents));
       const launch=deps.launch??spawn;
       if(turns.length&&await modes.native('opencode',cli)) try {
         const path=join(home,'history.json');await atomicPrivateWrite(path,Buffer.from(JSON.stringify(history)));
@@ -120,13 +127,39 @@ export function opencodeExecutor(keyFor:()=>Promise<string>,profile:string,bridg
         const sessionPath='/session/'+encodeURIComponent(session.id);
         // Stream only parts announced as text: reasoning parts use the same delta field.
         const textParts=new Set<string>();const seen=new Set<string>();const calls=new Map<string,{name:string;startedAt:string}>();const steps=new Set<string>();
+        // Subagent sessions: their steps, cost and Opentake calls count toward this response; their text reaches the lead as the task result.
+        const children=new Set<string>();
+        const step=(id:string)=>{steps.add(id);if(steps.size>(input.maxTurns??chatLimits.modelTurns))throw new AdapterError(`Response reached its ${input.maxTurns??chatLimits.modelTurns} model-turn limit.`);};
+        const childEvent=async(part:{id:string;sessionID:string;type:string;[key:string]:unknown})=>{
+          if(part.type==='step-start')step(part.id);
+          else if(part.type==='step-finish'){if(!seen.has(part.id)){seen.add(part.id);await capture.audit('usage.recorded',{source:'opencode',stepId:part.id,sessionId:part.sessionID,tokens:part.tokens,cost:part.cost,reason:part.reason});}}
+          else if(part.type==='tool'){
+            const tool=z.object({tool:z.string(),callID:z.string(),state:z.object({status:z.string()}).passthrough()}).parse(part);
+            // A refused built-in or task attempt is the subagent's own error; only Opentake calls are shown.
+            if(!tool.tool.startsWith('opentake_')||tool.state.status==='pending')return;
+            const ended=tool.state.status==='completed'||tool.state.status==='error';if(ended&&seen.has(part.id))return;
+            if(!calls.has(tool.callID))calls.set(tool.callID,{name:tool.tool.slice('opentake_'.length),startedAt:new Date().toISOString()});
+            const prior=calls.get(tool.callID)!;input.tool({id:tool.callID,name:prior.name,startedAt:prior.startedAt,state:ended?(tool.state.status==='error'?'failed':'completed'):'running',...(ended?{finishedAt:new Date().toISOString()}:{})});
+            if(ended){seen.add(part.id);await capture.audit('model.output',{tool:prior.name,subagentSession:part.sessionID,state:tool.state});}
+          }
+        };
         const partEvent=async(value:unknown)=>{
           const part=z.object({id:z.string(),sessionID:z.string(),type:z.string()}).passthrough().parse(value);
-          if(part.sessionID!==session.id)return;
+          if(part.sessionID!==session.id){if(children.has(part.sessionID))await childEvent(part);return;}
           if(part.type==='text') {
             textParts.add(part.id);const time=part.time as {end?:number}|undefined;
             if(!time?.end||seen.has(part.id))return;
             seen.add(part.id);const text=z.string().parse(part.text);capture.completeText(part.id,text);capture.replay({role:'assistant',content:[{type:'text',text}]});await capture.audit('model.output',{role:'assistant',text});
+          } else if(part.type==='tool'&&subagents&&part.tool==='task') {
+            // The lead starting the researcher: shown as activity, never replayed (its session is gone next time).
+            const task=z.object({callID:z.string(),state:z.object({status:z.enum(['pending','running','completed','error']),metadata:z.object({sessionId:z.string().optional()}).passthrough().optional()}).passthrough()}).parse(part);
+            if(task.state.metadata?.sessionId)children.add(task.state.metadata.sessionId);
+            // Once finished, a later copy of the part (the message's final parts) changes nothing.
+            if(task.state.status==='pending'||seen.has(part.id))return;
+            const ended=task.state.status==='completed'||task.state.status==='error';
+            if(!calls.has(task.callID))calls.set(task.callID,{name:'task',startedAt:new Date().toISOString()});
+            const prior=calls.get(task.callID)!;input.tool({id:task.callID,name:prior.name,startedAt:prior.startedAt,state:ended?(task.state.status==='error'?'failed':'completed'):'running',...(ended?{finishedAt:new Date().toISOString()}:{})});
+            if(ended){seen.add(part.id);await capture.audit('model.output',{tool:'task',state:task.state});}
           } else if(part.type==='tool') {
             const tool=z.object({tool:z.string().regex(/^opentake_[A-Za-z0-9_-]+$/),callID:z.string(),state:z.object({status:z.enum(['pending','running','completed','error']),input:z.unknown(),output:z.string().optional(),error:z.string().optional()})}).parse(part);
             if(tool.state.status==='pending')return;
@@ -136,7 +169,7 @@ export function opencodeExecutor(keyFor:()=>Promise<string>,profile:string,bridg
             const prior=calls.get(tool.callID)!;input.tool({id:tool.callID,name:prior.name,startedAt:prior.startedAt,state:ended?(tool.state.status==='error'?'failed':'completed'):'running',...(ended?{finishedAt:new Date().toISOString()}: {})});
             if(ended){seen.add(part.id);capture.replay({role:'user',content:[{type:'tool_result',tool_use_id:tool.callID,content:tool.state.output??tool.state.error??'Tool returned no result.',is_error:tool.state.status==='error'}]});await capture.audit('model.output',{tool:prior.name,state:tool.state});}
           } else if(part.type==='step-start') {
-            steps.add(part.id);if(steps.size>(input.maxTurns??chatLimits.modelTurns))throw new AdapterError(`Response reached its ${input.maxTurns??chatLimits.modelTurns} model-turn limit.`);
+            step(part.id);
           } else if(part.type==='step-finish') {
             if(!seen.has(part.id)){seen.add(part.id);await capture.audit('usage.recorded',{source:'opencode',stepId:part.id,tokens:part.tokens,cost:part.cost,reason:part.reason});}
           }
@@ -145,11 +178,12 @@ export function opencodeExecutor(keyFor:()=>Promise<string>,profile:string,bridg
         const events=await request(base+'/event',{headers,redirect:'error',signal:controller.signal});if(!events.ok||!events.body)throw protocolError('OpenCode');
         const eventLoop=readEvents(events,async raw=>{
           const event=z.object({type:z.string(),properties:record}).parse(raw);
-          if(event.type==='message.part.updated')await partEvent(event.properties.part);
+          if(event.type==='session.created'||event.type==='session.updated'){const info=z.object({id:z.string(),parentID:z.string().optional()}).passthrough().safeParse(event.properties.info);if(subagents&&info.success&&info.data.parentID===session.id)children.add(info.data.id);}
+          else if(event.type==='message.part.updated')await partEvent(event.properties.part);
           else if(event.type==='message.part.delta'&&event.properties.sessionID===session.id&&event.properties.field==='text') {
             const delta=z.object({partID:z.string(),delta:z.string()}).parse(event.properties);if(!seen.has(delta.partID)&&textParts.has(delta.partID))capture.stream(delta.partID,delta.delta);
           }
-          else if(event.type==='permission.asked'&&event.properties.sessionID===session.id)throw protocolError('OpenCode');
+          else if(event.type==='permission.asked'&&(event.properties.sessionID===session.id||children.has(String(event.properties.sessionID))))throw protocolError('OpenCode');
           else if(event.type==='session.error'&&event.properties.sessionID===session.id)throw nativeFailure('OpenCode',event.properties.error);
         },controller.signal).catch(error=>{if(!finished&&!controller.signal.aborted){streamFailure=error instanceof AdapterError?error:protocolError('OpenCode');controller.abort();}});
         const parts:unknown[]=current.parts.map(p=>p.type==='image'?{type:'file',url:p.url,mime:p.mime}:{type:'text',text:p.type==='text'?p.text:''});

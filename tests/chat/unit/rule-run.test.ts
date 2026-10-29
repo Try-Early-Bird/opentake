@@ -75,15 +75,15 @@ test('automatic run limits default sensibly, save within bounds, and reject anyt
 
 test('chat limits default high, save within bounds, and apply to each new chat response',async()=>{
  const f=await fixture();try{
-  expect(await f.service.chatRunLimits()).toEqual({durationMs:1_800_000,toolCalls:200,modelTurns:100});
-  const next={durationMs:600_000,toolCalls:40,modelTurns:12};
+  expect(await f.service.chatRunLimits()).toEqual({durationMs:1_800_000,toolCalls:200,modelTurns:100,subagents:true});
+  const next={durationMs:600_000,toolCalls:40,modelTurns:12,subagents:false};
   expect(await f.service.saveChatRunLimits(next)).toEqual(next);
-  for(const bad of [{...next,modelTurns:201},{...next,toolCalls:501},{...next,durationMs:59_999},{...next,extra:1}])
+  for(const bad of [{...next,modelTurns:201},{...next,toolCalls:501},{...next,durationMs:59_999},{...next,subagents:'yes'},{...next,extra:1}])
    await expect(f.service.saveChatRunLimits(bad)).rejects.toThrow();
   const requestId=randomUUID();await f.service.send({requestId,takeId:f.id,parentId:null,text:'Research BTC',selection});await settle(f.service);
-  expect((await f.run(requestId)).limits).toEqual({inferenceMs:600_000,absoluteMs:600_000,toolCalls:40,modelTurns:12});
+  expect(await f.run(requestId)).toMatchObject({limits:{inferenceMs:600_000,absoluteMs:600_000,toolCalls:40,modelTurns:12},subagents:false});
   // A rule run keeps the limits its rule and the automatic settings gave it.
   const rule=f.input();await f.service.ruleRun(rule);await settle(f.service);
-  expect((await f.run(rule.requestId)).limits).toEqual(rule.limits);
+  expect(await f.run(rule.requestId)).toMatchObject({limits:rule.limits,subagents:false});
  }finally{await f.close();}
 });

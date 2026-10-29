@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm, lstat, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { z } from 'zod';
 import { resolveAiCli, type CliCommand } from './ai-runtime';
+import { chatLimits } from '../shared/chat-limits';
 import { atomicPrivateWrite } from './private-files';
 import type { SecretStore } from './secret-store';
 import { AdapterError, manageChild, nativeFailure, protocolError } from './native-chat-process';
@@ -14,9 +15,10 @@ export interface GrokDependencies {
 }
 // In 1.0.46, top-level --tools/--max-turns flags do not configure agent stdio.
 // Enforce the toolset via session/new's agentProfile and permissions via config.
+// maxTurns is the default; each run passes its own limit.
 export const grokAgentProfile = {
   name: 'opentake', description: 'Opentake chat through its authorized MCP gateway',
-  tools: ['search_tool', 'use_tool'], permissionMode: 'dontAsk', maxTurns: 20,
+  tools: ['search_tool', 'use_tool'], permissionMode: 'dontAsk', maxTurns: chatLimits.modelTurns as number,
   discoverSkills: false, agentsMd: false, injectDefaultTools: false,
 };
 export const grokChatConfig = `[cli]

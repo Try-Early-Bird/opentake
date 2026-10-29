@@ -573,5 +573,10 @@
     "version": 115,
     "name": "Rule agent assessments",
     "checksum": "823f0422b2e47a74cb29ce49d0496e0d2bd8ecd4441b8dda3920b379e8fdb805"
+  },
+  {
+    "version": 116,
+    "name": "Subagent setting",
+    "checksum": "40d6f32e9dde1b461da9d4be184e6d6a864a38b392499eb7156d6597e0ebe677"
   }
 ]

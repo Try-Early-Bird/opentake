@@ -214,7 +214,7 @@ export function bootBackgroundHost(profile: string, build: string) {
       signal: input.signal, budgets: input.budgets, usage: input.usage, limits }, {
       audit: aiAudit, budgets,
       authorize: async () => { grant = capabilities.issue(input.id, input.takeId, limits?.absoluteMs); await platformAccess.ensure(input.id); },
-      execute: runtime => executeChat({ ...input, ...runtime, managedBudget: true, ...(limits?.modelTurns?{maxTurns:limits.modelTurns}:{}), gateway: { port: rpc!.manifest.port, token: grant!.token } }),
+      execute: runtime => executeChat({ ...input, ...runtime, managedBudget: true, subagents: configuration.subagents === true, ...(limits?.modelTurns?{maxTurns:limits.modelTurns}:{}), gateway: { port: rpc!.manifest.port, token: grant!.token } }),
       cleanup: async () => { grant?.revoke(); await mcp.expireRun(input.id); },
     });
   }, models, takeId => mcp.policySnapshot(takeId),undefined,async takeId=>{
