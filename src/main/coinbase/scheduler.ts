@@ -49,7 +49,7 @@ export function createCoinbaseScheduler(database:Database,orders:ReturnType<type
    else await rebalance(candidate);
   }
  }
- async function rebalance(candidate:Candidate){
+ async function rebalance(candidate:Candidate):Promise<void>{
   const parsed=basketSchema.safeParse(candidate.spec);
   if(!parsed.success||!['USD','USDC'].includes(candidate.quote))return;
   try{parsed.data=await database.use(db=>executionBasket(db,parsed.data,{strategyId:candidate.strategy_id,versionId:candidate.version_id,accountId:candidate.account_id},'coinbase'));}catch{return;}
@@ -79,8 +79,14 @@ export function createCoinbaseScheduler(database:Database,orders:ReturnType<type
    run=await database.use(async db=>(await db.query<Run>("SELECT id,allocation_id,scheduled_on::text,review_id,phase,attempts,trigger FROM coinbase_rebalance_runs WHERE allocation_id=$1 AND scheduled_on=$2 AND trigger=$3 AND state='pending'",[candidate.id,due,trigger])).rows[0]);
   }
   if(!run)return;
-  // Unsent drift retries must still meet the current rule and have fresh data.
-  if(run.trigger==='drift'&&run.phase==='initial'&&!run.review_id&&(!candidate.drift_enabled||trigger!=='drift'))return;
+  // Unsent drift retries must still meet the current rule and have fresh data. One that does not
+  // must not hold back a calendar run that falls due: it sent nothing, so it closes as a no-order
+  // completion (which does not count toward the drift limit) and the calendar run goes ahead.
+  if(run.trigger==='drift'&&run.phase==='initial'&&!run.review_id&&(!candidate.drift_enabled||trigger!=='drift')){
+   if(trigger!=='schedule'||!due)return;
+   const closed=await database.use(db=>db.query("UPDATE coinbase_rebalance_runs SET state='completed',updated_at=$2 WHERE id=$1 AND state='pending' AND review_id IS NULL AND phase='initial' RETURNING id",[run.id,iso()]));
+   return closed.rows.length?rebalance(candidate):undefined;
+  }
   const claimsEvidence=await database.use(async db=>rebalanceClaimsEvidence((await readCoinbaseClaims(db,candidate.account_id)).filter(c=>c.allocationId===candidate.id)));
   const ready=await database.use(async db=>(await db.query("SELECT 1 FROM coinbase_rebalance_runs WHERE id=$1 AND state<>'attention' AND (next_attempt_at<=$2 OR (warning_code IS NOT NULL AND (warning_details->>'claimsHash' IS DISTINCT FROM $3)))",[run.id,iso(),claimsEvidence])).rows.length);
   if(!ready)return;
