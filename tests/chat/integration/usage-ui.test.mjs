@@ -19,8 +19,8 @@ test('usage is accessible beside responses and budgets save across navigation',{
   assert.deepEqual(await page.evaluate(()=>window.takes.budgets()),{claudeCostUsd:0.25,outputTokens:1234,opencodeCostUsd:0.75});
   await page.getByRole('button',{name:'General',exact:true}).click();await page.getByRole('button',{name:'AI settings',exact:true}).click();await page.waitForFunction(()=>document.querySelector('[aria-label="Claude cost budget"]')?.value==='0.25');assert.equal(await budget.inputValue(),'0.25');assert.equal(await page.getByRole('spinbutton',{name:'Output token threshold',exact:true}).inputValue(),'1234');assert.equal(await page.getByRole('spinbutton',{name:'OpenCode cost threshold',exact:true}).inputValue(),'0.75');
   // Automatic run limits default sensibly, save, and persist across navigation.
-  const minutes=page.getByRole('spinbutton',{name:'Run time (minutes)',exact:true});assert.equal(await minutes.inputValue(),'5');
-  assert.equal(await page.getByRole('spinbutton',{name:'Model turns',exact:true}).inputValue(),'20');
+  const minutes=page.getByRole('spinbutton',{name:'Run time (minutes)',exact:true});assert.equal(await minutes.inputValue(),'15');
+  assert.equal(await page.getByRole('spinbutton',{name:'Model turns',exact:true}).inputValue(),'100');
   await minutes.fill('2');await page.getByRole('spinbutton',{name:'Model turns',exact:true}).fill('8');await page.getByRole('spinbutton',{name:'Output tokens',exact:true}).fill('20000');
   await page.getByRole('button',{name:'Save automatic run limits',exact:true}).click();await page.getByText('Automatic run limits saved.',{exact:true}).waitFor();
   await page.getByRole('button',{name:'General',exact:true}).click();await page.getByRole('button',{name:'AI settings',exact:true}).click();
