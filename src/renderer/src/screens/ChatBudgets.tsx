@@ -21,7 +21,7 @@ function ChatRunLimitsForm(){
   {field('minutes','Run time (minutes)',{min:1,max:60,step:1})}
   {field('toolCalls','Tool calls',{min:1,max:500,step:1})}
   {field('modelTurns','Model turns',{min:1,max:200,step:1})}
-  <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={subagents} disabled={!ready||busy} onChange={e=>{setSubagents(e.target.checked);setSaved('');}}/><span>Let the AI delegate research to subagents<span className="block text-xs leading-5 text-muted-foreground">Researchers that use the same read-only tools and cannot propose changes or trade. Their work counts toward these limits. Also applies to automatic runs. Available with Claude, OpenCode Zen and OpenRouter.</span></span></label>
+  <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={subagents} disabled={!ready||busy} onChange={e=>{setSubagents(e.target.checked);setSaved('');}}/><span>Let the AI delegate research to subagents<span className="block text-xs leading-5 text-muted-foreground">Researchers that use the same read-only tools and cannot propose changes or trade. Their work counts toward these limits. Also applies to automatic runs. Available with Claude, Grok, OpenCode Zen and OpenRouter.</span></span></label>
   <button disabled={!ready||busy} className="rounded bg-muted px-3 py-2 text-sm">{busy?'Saving…':'Save chat limits'}</button>
   {saved&&<p role="status" className="text-sm">{saved}</p>}{error&&<p role="alert" className="text-sm text-destructive">{error}</p>}
  </form>;
