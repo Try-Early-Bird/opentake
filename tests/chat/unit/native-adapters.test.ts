@@ -59,7 +59,7 @@ require('node:readline').createInterface({input:process.stdin}).on('line',line=>
   emit({id:e.id,result:{turn:{id:'turn'}}});if(mode==='hang')return;
   if(mode==='malformed'){console.log('{bad');return;}if(mode==='exit'){process.exit(0);return;}
   if(mode==='native'){emit({id:987,method:'item/commandExecution/requestApproval',params:{}});return;}
-  if(mode==='limit'){for(let i=0;i<20;i++)emit({method:'thread/tokenUsage/updated',params:{threadId:'thread',tokenUsage:{total:{totalTokens:i+1}}}});return;}
+  if(mode==='limit'){for(let i=0;i<100;i++)emit({method:'thread/tokenUsage/updated',params:{threadId:'thread',tokenUsage:{total:{totalTokens:i+1}}}});return;}
   emit({id:987,method:'item/tool/call',params:{threadId:'thread',turnId:'turn',callId:'call',tool:'opentake_marker',arguments:{}}});
  }
 });`;
@@ -68,7 +68,7 @@ for(const mode of ['success','malformed','exit','native','hang','limit'])test('C
  const controller=new AbortController(),result=input('chatgpt',controller.signal);let timer:ReturnType<typeof setTimeout>|undefined;
  const execute=codexExecutor(store,root,{command:()=>({executable:process.execPath,args:[script]}),version:async()=>({version:'0.144.3',verified:true}),gatewayCall:async (_host,method)=> (method==='gateway:list'?[{name:'marker',description:'Synthetic',inputSchema:{type:'object'}}]:method==='gateway:instructions'?'Synthetic guidance':{content:[{type:'text',text:'Synthetic tool result'}]}) as never,launch:((_e,args,options)=>{if(mode==='hang')timer=setTimeout(()=>controller.abort(),100);expect(JSON.stringify(args)).not.toContain(token);return spawn(process.execPath,[script,mode],options);}) as typeof spawn});
  try{if(mode==='success'){await execute(result.run);expect(result.text).toEqual(['Reply [redacted] [redacted]']);expect(result.replay).toHaveLength(3);expect(result.tools.at(-1)?.state).toBe('completed');expect(JSON.stringify(result.audit)).not.toContain(token);}
-  else await expect(execute(result.run)).rejects.toThrow(mode==='hang'?'stopped':mode==='exit'?'exited':mode==='limit'?'20 model-turn limit':'unsupported chat protocol');
+  else await expect(execute(result.run)).rejects.toThrow(mode==='hang'?'stopped':mode==='exit'?'exited':mode==='limit'?'100 model-turn limit':'unsupported chat protocol');
   expect(await readdir(join(root,'chat-temporary'))).toEqual([]);
  }finally{clearTimeout(timer);await rm(root,{recursive:true,force:true});}
 });

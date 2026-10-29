@@ -6,7 +6,7 @@ import type { CoinbaseChatScope } from '../shared/platform-connections';
 import { contextUnits, contextCompactionThreshold, contextLimit, planContext, type ContextSummary } from './take-context';
 import { createTakeHistory } from './take-history';
 import { quoteImported } from './take-file';
-import { automaticRunLimitBounds, type AutomaticRunLimits, type ChatBudgets, type RunUsage } from '../shared/chat-usage';
+import { automaticRunLimitBounds, chatRunLimitBounds, type AutomaticRunLimits, type ChatBudgets, type ChatRunLimits, type RunUsage } from '../shared/chat-usage';
 import { validateRunImages } from './take-images';
 import { chatLimits } from '../shared/chat-limits';
 import { modePrompt, emptyModeConfig, composeInstructions, withDefaultFlow, withoutDefaultFlow, type ModeFlow, type PublishedMode } from '../shared/instruction-modes';
@@ -79,6 +79,11 @@ export function createTakes(db: Database, execute: TakeExecutor, models: (provid
    return {...rows.rows[0],messages:messages.rows.map(r=>r.data)};
   });
  }
+ /** AI settings › Chat responses: time, tool-call and turn limits for each response. */
+ async function chatRunLimits():Promise<ChatRunLimits>{
+  const r=(await db.use(d=>d.query<{duration_ms:number;tool_calls:number;model_turns:number}>('SELECT duration_ms,tool_calls,model_turns FROM chat_budgets WHERE singleton'))).rows[0];
+  return {durationMs:r.duration_ms,toolCalls:r.tool_calls,modelTurns:r.model_turns};
+ }
  /** AI settings › Automatic runs: the default and maximum for rule agent runs. */
  async function automaticLimits():Promise<AutomaticRunLimits>{
   const r=(await db.use(d=>d.query<{duration_ms:number;tool_calls:number;model_turns:number;cost_usd:string;output_tokens:number}>('SELECT duration_ms,tool_calls,model_turns,cost_usd::text,output_tokens FROM automatic_run_limits WHERE singleton'))).rows[0];
@@ -133,6 +138,8 @@ export function createTakes(db: Database, execute: TakeExecutor, models: (provid
   // policy provider queries the same database and would otherwise deadlock.
   const availableTools = (await toolsSnapshot(take.id)).filter(tool => coinbaseAccounts.length || !(tool as {name?:string}).name?.startsWith('coinbase_'));
   const budgetSettings=options.budgets??await budgets();
+  // Rule runs carry their own limits; a chat response takes the member's chat limits.
+  const chatLimitSettings=options.ruleRun?undefined:await chatRunLimits();
   const profileTools = published?.config.tools ? availableTools.filter(tool=>{const t=tool as {server:string;name:string};return published.config.tools!.includes(`${t.server}/${t.name}`);}) : availableTools;
   const toolConfiguration = options.tool ? profileTools.filter(tool=>options.tool!(tool as {name?:string;policy?:string})) : profileTools;
   // Imported messages reach the AI as one quoted block, never as its own turns (take-file.ts).
@@ -150,7 +157,7 @@ export function createTakes(db: Database, execute: TakeExecutor, models: (provid
    for(const summary of context.summaries)await tx.query('INSERT INTO take_context_summaries(id,take_id,message_id,source_hash,algorithm,text,provenance) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING',[summary.id,take.id,summary.messageId,summary.sourceHash,summary.algorithm,summary.text,JSON.stringify(summary.provenance)]);
    if(!request.regenerate)await tx.query('INSERT INTO take_messages(id,take_id,parent_id,data) VALUES($1,$2,$3,$4)',[user.id,take.id,user.parentId,JSON.stringify(user)]);
    await tx.query('INSERT INTO take_messages(id,take_id,parent_id,data) VALUES($1,$2,$3,$4)',[reply.id,take.id,reply.parentId,JSON.stringify(reply)]);
-   await tx.query('INSERT INTO take_runs(id,take_id,request_id,state,configuration) VALUES($1,$2,$3,\'starting\',$4)',[runId,take.id,request.requestId,JSON.stringify({documentIds:runDocuments,documentUnits:Math.max(0,Math.min(documentLimits.responseUnits,contextLimit-context.info.inputUnits-16000)),documentImages:catalog.models.find(m=>m.value===request.selection.model)?.imageInput===true?Math.max(0,8-new Set(sourceMessages.flatMap(m=>m.images.map(i=>i.id))).size):0,coinbaseAccount,coinbaseAccounts,selection:request.selection,budgets:budgetSettings,permissionMode:take.permissionMode,instructions:system,about:userContext,instructionProfile:{id:profile.id,...published},instructionMode:!profile.builtin?'saved_profile':published.followsDefault?'follow_app_default':'custom',defaultHash:createHash('sha256').update(appDefaults).digest('hex'),tools:toolConfiguration,context:context.info,...(options.ruleRun?{rule:options.ruleRun,limits:options.limits,unattended:true}:{})})]);
+   await tx.query('INSERT INTO take_runs(id,take_id,request_id,state,configuration) VALUES($1,$2,$3,\'starting\',$4)',[runId,take.id,request.requestId,JSON.stringify({documentIds:runDocuments,documentUnits:Math.max(0,Math.min(documentLimits.responseUnits,contextLimit-context.info.inputUnits-16000)),documentImages:catalog.models.find(m=>m.value===request.selection.model)?.imageInput===true?Math.max(0,8-new Set(sourceMessages.flatMap(m=>m.images.map(i=>i.id))).size):0,coinbaseAccount,coinbaseAccounts,selection:request.selection,budgets:budgetSettings,permissionMode:take.permissionMode,instructions:system,about:userContext,instructionProfile:{id:profile.id,...published},instructionMode:!profile.builtin?'saved_profile':published.followsDefault?'follow_app_default':'custom',defaultHash:createHash('sha256').update(appDefaults).digest('hex'),tools:toolConfiguration,context:context.info,...(options.ruleRun?{rule:options.ruleRun,limits:options.limits,unattended:true}:{limits:{inferenceMs:chatLimitSettings!.durationMs,absoluteMs:chatLimitSettings!.durationMs,toolCalls:chatLimitSettings!.toolCalls,modelTurns:chatLimitSettings!.modelTurns}})})]);
    await tx.query('UPDATE take_attachments SET staged_until=NULL WHERE take_id=$1 AND id=ANY($2::uuid[])',[take.id,imgs.map(i=>i.id)]);
    await tx.query(`UPDATE takes SET head_id=$1,draft=CASE WHEN $6 THEN draft ELSE '' END,draft_images=CASE WHEN $6 THEN draft_images ELSE '[]' END,draft_documents=CASE WHEN $6 THEN draft_documents ELSE '[]' END,selection=$2,instruction_profile_id=$5,title=CASE WHEN title='New Take' THEN $3 ELSE title END,updated_at=now() WHERE id=$4`,[reply.id,JSON.stringify(request.selection),(request.text||docs[0]?.name||'Image reference').slice(0,60),take.id,profileId,!!options.ruleRun||request.keepDraft]);
   }));
@@ -266,6 +273,13 @@ export function createTakes(db: Database, execute: TakeExecutor, models: (provid
   }),
 
   budgets,
+  chatRunLimits,
+  async saveChatRunLimits(value:unknown){
+   const b=chatRunLimitBounds,whole=(r:readonly [number,number])=>z.number().int().min(r[0]).max(r[1]);
+   const v=z.object({durationMs:whole(b.durationMs),toolCalls:whole(b.toolCalls),modelTurns:whole(b.modelTurns)}).strict().parse(value);
+   await db.use(d=>d.query('UPDATE chat_budgets SET duration_ms=$1,tool_calls=$2,model_turns=$3 WHERE singleton',[v.durationMs,v.toolCalls,v.modelTurns]));
+   return chatRunLimits();
+  },
   automaticLimits,
   async saveAutomaticLimits(value:unknown){
    const b=automaticRunLimitBounds,whole=(r:readonly [number,number])=>z.number().int().min(r[0]).max(r[1]);

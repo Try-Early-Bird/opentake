@@ -1,5 +1,5 @@
 import type { DocumentAttachment, DocumentAction } from './chat-documents';
-import type { ChatUsage, ChatBudgets,AutomaticRunLimits, RunUsage } from './chat-usage';
+import type { ChatUsage, ChatBudgets,AutomaticRunLimits, ChatRunLimits, RunUsage } from './chat-usage';
 export type ReplayPart = {type:'text';text:string}|{type:'tool_use';id:string;name:string;input:unknown}|{type:'tool_result';tool_use_id:string;content:string;is_error:boolean};
 export interface ReplayMessage { role:'user'|'assistant'; content:ReplayPart[] }
 import type { ChatSelection } from './chat';
@@ -37,6 +37,8 @@ export interface TakesAPI {
   messageVersions(takeId:string,messageId:string,cursor?:string):Promise<{items:{id:string;number:number}[];next:string|null}>;
   budgets():Promise<ChatBudgets>;
   saveBudgets(value:ChatBudgets):Promise<void>;
+  chatRunLimits():Promise<ChatRunLimits>;
+  saveChatRunLimits(value:ChatRunLimits):Promise<ChatRunLimits>;
   automaticLimits():Promise<AutomaticRunLimits>;
   saveAutomaticLimits(value:AutomaticRunLimits):Promise<AutomaticRunLimits>;
   usageHistory(takeId:string,before?:string):Promise<{items:RunUsage[];next:string|null}>;

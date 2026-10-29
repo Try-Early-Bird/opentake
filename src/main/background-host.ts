@@ -836,6 +836,8 @@ export function bootBackgroundHost(profile: string, build: string) {
           if(method==='takes:message-versions')return await takes.messageVersions(args[0],args[1],args[2]);
           if(method==='takes:budgets')return await takes.budgets();
           if(method==='takes:save-budgets')return await takes.saveBudgets(args[0]);
+          if(method==='takes:chat-run-limits')return await takes.chatRunLimits();
+          if(method==='takes:save-chat-run-limits')return await takes.saveChatRunLimits(args[0]);
           if(method==='takes:automatic-limits')return await takes.automaticLimits();
           if(method==='takes:save-automatic-limits')return await takes.saveAutomaticLimits(args[0]);
           if(method==='takes:usage-history')return await takes.usageHistory(args[0],args[1]);

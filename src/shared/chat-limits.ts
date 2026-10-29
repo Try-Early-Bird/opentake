@@ -1,1 +1,1 @@
-export const chatLimits = { imagesPerMessage: 8, uniqueImagesPerRun: 8, imageBytesPerRun: 12 * 1024 * 1024, imageBytes: 2 * 1024 * 1024, retainedImageBytes: 40 * 1024 * 1024, modelTurns: 20, toolDispatches: 30 } as const;
+export const chatLimits = { imagesPerMessage: 8, uniqueImagesPerRun: 8, imageBytesPerRun: 12 * 1024 * 1024, imageBytes: 2 * 1024 * 1024, retainedImageBytes: 40 * 1024 * 1024, modelTurns: 100, toolDispatches: 200 } as const;
