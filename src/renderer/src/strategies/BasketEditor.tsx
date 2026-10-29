@@ -28,7 +28,9 @@ export function BasketEditor({initial,onSave,onCancel,busy,saveError}:{initial?:
   setRows(old=>{const result=[...old];for(const r of added)if(!result.some(p=>instrumentKey(p)===instrumentKey({venue,symbol:r.symbol})))result.push({venue,symbol:r.symbol,weight:r.weight??'',reason:''});return result;});setPaste(null);setError('');
  }
  function edit(index:number,patch:Partial<AllocationRow>){setRows(old=>old.map((r,i)=>i===index?{...r,...patch}:r));}
- function payload(){return {metadata:{title,description,rationale,holdings:rows.filter(r=>r.reason.trim()).map(r=>({instrument:rowInstrument(r),reason:r.reason}))},spec:{schemaVersion:1,kind:'basket',target:{weights:rows.map(r=>({instrument:rowInstrument(r),bps:percentToBps(r.weight)})),cashBps:percentToBps(cash)},rebalance},unsupportedRequests};}
+ // The agent's considered candidates carry through manual edits; one added as a holding leaves the list.
+ function considered(){return (initial?.metadata.considered??[]).filter(c=>!c.instrument||!rows.some(r=>instrumentKey(r)===instrumentKey(c.instrument!)));}
+ function payload(){const kept=considered();return {metadata:{title,description,rationale,holdings:rows.filter(r=>r.reason.trim()).map(r=>({instrument:rowInstrument(r),reason:r.reason})),...(kept.length?{considered:kept}:{})},spec:{schemaVersion:1,kind:'basket',target:{weights:rows.map(r=>({instrument:rowInstrument(r),bps:percentToBps(r.weight)})),cashBps:percentToBps(cash)},rebalance},unsupportedRequests};}
  async function next(){
   setError('');const data=payload();
   const result=step===0?basketSchema.safeParse({...data.spec,rebalance:{schedule:'never',driftBandPoints:null,driftBandRelative:null}}):step===1?rebalanceSchema.safeParse(rebalance):step===2?metadataSchema.safeParse(data.metadata):proposalPayloadSchema.safeParse(data);

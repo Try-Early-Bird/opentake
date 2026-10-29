@@ -3,7 +3,7 @@ import {RuleRunHistory} from './RuleRunHistory';
 import {TakeRules} from './TakeRules';
 import {InstrumentMarketLink} from './InstrumentMarketLink';
 import {createPortal} from 'react-dom';
-import { supportsBasketExecution,hasPendingInstrumentSupport,instrumentKey as identityKey,type StrategyInstrument } from '../../../shared/strategies';
+import { supportsBasketExecution,hasPendingInstrumentSupport,instrumentKey as identityKey,type StrategyInstrument,type Considered } from '../../../shared/strategies';
 import { TakeIconPicker } from './TakeIconPicker';
 import { ArrowLeft, Check, ChevronRight, History, TriangleAlert } from 'lucide-react';
 import { Button } from '../components/ui/button';
@@ -53,8 +53,23 @@ export function TakeSummary({proposal:p,committed,checks}:{proposal:Proposal;com
  <p className="text-xs text-muted-foreground">{venues.length===1?`All on ${venueName(venues[0]!)} · `:''}Tap a holding for details and review notes</p>
  </section>
  {p.metadata.rationale&&<section aria-label="Why this take" className={section}><h3 className={eyebrow}>Why this take</h3><ClampedText text={p.metadata.rationale}/></section>}
+ <ConsideredSection considered={p.metadata.considered??[]} committed={committed?.metadata.considered}/>
  <RulesSection rebalance={p.spec.rebalance} committed={rules} flagged={!!p.unsupportedRequests.length}/>
  </div>;
+}
+// Candidates the AI researched and left out, each with its reason. Collapsed: the holdings are the take.
+export function ConsideredSection({considered,committed}:{considered:Considered[];committed?:Considered[]}){
+ const [open,setOpen]=useState(false);
+ if(!considered.length)return null;
+ const key=(c:Considered)=>c.instrument?identityKey(c.instrument):c.subject.toLowerCase(),before=new Set(committed?.map(key));
+ return <section aria-label="Considered, not included" className={section}>
+ <button type="button" aria-expanded={open} className="flex w-full items-center justify-between gap-3 text-left" onClick={()=>setOpen(!open)}>
+  <h3 className={eyebrow}>Considered, not included ({considered.length})</h3>
+  <ChevronRight size={14} className={`text-muted-foreground transition-transform ${open?'rotate-90':''}`}/></button>
+ {open&&<ul aria-label="Considered candidates" className="space-y-2">{considered.map(c=><li key={key(c)} className="space-y-0.5">
+  <div className="flex items-center gap-2"><span className="row-title">{c.subject}</span>{!!committed&&!before.has(key(c))&&<span className="rounded bg-success/10 px-1.5 text-[11px] font-medium text-success">New</span>}{c.instrument&&<InstrumentMarketLink instrument={c.instrument}/>}</div>
+  <p className="text-xs leading-5 text-muted-foreground">{c.reason}</p></li>)}</ul>}
+ </section>;
 }
 // Hide empty portfolio settings unless a pending change or review warning needs attention.
 function RulesSection({rebalance,committed,flagged}:{rebalance:Proposal['spec']['rebalance'];committed?:Proposal['spec']['rebalance'];flagged:boolean}){

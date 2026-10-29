@@ -26,7 +26,7 @@ test('MCP protocol discovers only enabled platform tools and routes shared and p
     const catalog = (await client.listTools()).tools;
     expect(catalog.map(t => t.name)).toEqual(toolCatalog().map(t => t.name));
     expect(new Set(catalog.map(t => t.name)).size).toBe(catalog.length);
-    expect(catalog.filter(t => !t.annotations?.readOnlyHint).map(t=>t.name).sort()).toEqual(['opentake_propose_rules','opentake_propose_strategy','opentake_request_tool_access','opentake_request_trade']);
+    expect(catalog.filter(t => !t.annotations?.readOnlyHint).map(t=>t.name).sort()).toEqual(['opentake_propose_rules','opentake_propose_strategy','opentake_report_assessment','opentake_request_tool_access','opentake_request_trade']);
     expect(catalog.some(t => /follow|publish|confirm|exercise|create_scan/.test(t.name))).toBe(false);
     const result = await client.callTool({ name: 'opentake_list_accounts', arguments: { platform: 'robinhood' } });
     expect(JSON.stringify(result)).toContain(accountRef);

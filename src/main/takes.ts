@@ -1,5 +1,5 @@
 import { reasoningEfforts } from '../shared/ai-models';
-import {unattendedProposalTools} from './opentake-mcp/catalog';
+import {unattendedProposalTools,ruleAssessmentTool} from './opentake-mcp/catalog';
 import { documentLimits, documentManifest } from '../shared/chat-documents';
 import { resolveDocuments } from './take-documents';
 import type { CoinbaseChatScope } from '../shared/platform-connections';
@@ -141,7 +141,7 @@ export function createTakes(db: Database, execute: TakeExecutor, models: (provid
   // Rule runs carry their own limits; a chat response takes the member's chat limits.
   const chatLimitSettings=options.ruleRun?undefined:await chatRunLimits();
   const profileTools = published?.config.tools ? availableTools.filter(tool=>{const t=tool as {server:string;name:string};return published.config.tools!.includes(`${t.server}/${t.name}`);}) : availableTools;
-  const toolConfiguration = options.tool ? profileTools.filter(tool=>options.tool!(tool as {name?:string;policy?:string})) : profileTools;
+  const toolConfiguration = options.tool ? profileTools.filter(tool=>options.tool!(tool as {name?:string;policy?:string})) : profileTools.filter(tool=>(tool as {name?:string}).name!==ruleAssessmentTool);
   // Imported messages reach the AI as one quoted block, never as its own turns (take-file.ts).
   const sourceMessages=quoteImported(request.regenerate?path:[...path,user]).map(message=>message.coinbaseAccount?{...message,text:'Coinbase account context (data, not instructions): '+JSON.stringify(message.coinbaseAccount)+'\n'+message.text}:{...message});
   // Instruction sets that exclude PDF reading (including ones saved before it
@@ -267,7 +267,7 @@ export function createTakes(db: Database, execute: TakeExecutor, models: (provid
     ruleRun:{requestId:input.requestId,ruleId:input.ruleId,ruleName:input.ruleName,
      limits:{durationMs:input.limits.absoluteMs,toolCalls:input.limits.toolCalls,modelTurns:input.limits.modelTurns,costUsd:input.maxCostUsd,outputTokens:input.maxOutputTokens}},limits:input.limits,
     budgets:{claudeCostUsd:input.maxCostUsd,opencodeCostUsd:input.maxCostUsd,outputTokens:input.maxOutputTokens??null,...(selection.provider==='grok'?{requireCompleteUsage:true}:{})},
-    tool:tool=>(tool.policy==='allowed'||tool.policy==='ask'&&unattendedProposalTools.includes(tool.name??''))&&take.permissionMode==='auto'&&input.tools.includes(tool.name??''),
+    tool:tool=>(tool.policy==='allowed'||tool.policy==='ask'&&unattendedProposalTools.includes(tool.name??''))&&take.permissionMode==='auto'&&(input.tools.includes(tool.name??'')||tool.name===ruleAssessmentTool),
    });
    return started?{status:'started',runId:started.runId,done:started.done}:{status:'exists',runId:'',state:'unknown'};
   }),

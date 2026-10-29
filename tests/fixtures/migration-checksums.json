@@ -568,5 +568,10 @@
     "version": 114,
     "name": "Higher and adjustable run limits",
     "checksum": "f54dc543f6fb209c6ce2a944cf69c565ede030f7e6fdda3153ab97f73e7a7d73"
+  },
+  {
+    "version": 115,
+    "name": "Rule agent assessments",
+    "checksum": "823f0422b2e47a74cb29ce49d0496e0d2bd8ecd4441b8dda3920b379e8fdb805"
   }
 ]

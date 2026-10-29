@@ -54,7 +54,7 @@ test('Claude offers a research subagent with Opentake tools only, keeps its text
   expect(args[args.indexOf('--allowedTools')+1]).toBe('mcp__opentake__*,Agent');
   const agents=JSON.parse(args[args.indexOf('--agents')+1]);
   expect(Object.keys(agents)).toEqual(['researcher']);expect(agents.researcher.tools).toBeUndefined();
-  expect(agents.researcher.disallowedTools).toEqual(['Agent','mcp__opentake__opentake_propose_strategy','mcp__opentake__opentake_propose_rules','mcp__opentake__opentake_request_trade','mcp__opentake__opentake_request_tool_access']);
+  expect(agents.researcher.disallowedTools).toEqual(['Agent','mcp__opentake__opentake_propose_strategy','mcp__opentake__opentake_propose_rules','mcp__opentake__opentake_request_trade','mcp__opentake__opentake_request_tool_access','mcp__opentake__opentake_report_assessment']);
   return spawn(process.execPath,[script],options);
  }) as typeof spawn,()=>({executable:'/synthetic/claude',args:[]}));
  try{

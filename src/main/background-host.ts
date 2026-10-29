@@ -370,7 +370,7 @@ export function bootBackgroundHost(profile: string, build: string) {
   const mcp = createMcpManagement(database,secrets,join(profile,'mcp-temporary'),activeRun,async (name,input,signal,run,call)=>callOpentakeTool({
     dataSourceList:async()=>{if(!run)throw Error('Run required');return sourceChat.list(run);},
     dataSourceRead:async input=>{if(!run)throw Error('Run required');return sourceChat.read(run,input);},
-    rules:async(name,input)=>{if(!run)throw Error('Run required');await platformAccess.ensure(run);return name==='opentake_read_rules'?ruleProposals.agentRead(run):name==='opentake_read_rule_activity'?ruleProposals.agentActivity(run,input):name==='opentake_request_trade'?ruleAgents.requestTrade(run,input):ruleProposals.propose(run,input);},
+    rules:async(name,input)=>{if(!run)throw Error('Run required');await platformAccess.ensure(run);return name==='opentake_read_rules'?ruleProposals.agentRead(run):name==='opentake_read_rule_activity'?ruleProposals.agentActivity(run,input):name==='opentake_request_trade'?ruleAgents.requestTrade(run,input):name==='opentake_report_assessment'?ruleAgents.reportAssessment(run,input):ruleProposals.propose(run,input);},
     takeInputs:async()=>{if(!run)throw Error('Run required');return takeInputChat(run);},
     documents:async(input)=>{if(!run)throw new Error('Run required');return documents.tool(run,input,signal);},
     strategy:async(name,input)=>{if(!run)throw new Error('Run required');return name==='opentake_propose_strategy'?strategies.agentPropose(run,input,call):strategies.agentRead(run,z.object({targetTakeId:z.uuid().optional()}).strict().parse(input).targetTakeId);},

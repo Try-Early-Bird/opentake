@@ -23,7 +23,7 @@ export async function readRuleEvidence(tx:Pick<DatabaseClient,'query'>,request:z
    const deliveryEnabled=!!enrollment?.enabled&&enrollment.notifications_enabled;
    const mode=deliveryEnabled?'notifications' as const:'shadow' as const;
    if(request.action==='rule-evidence-read'){
-    const row=(await tx.query<{id:string;[key:string]:unknown}>(`SELECT id,take_id,draft_revision,rule_id,firing_key,created_at,expires_at,status,action,evidence,${tradeOutcomeColumns}
+    const row=(await tx.query<{id:string;[key:string]:unknown}>(`SELECT id,take_id,draft_revision,rule_id,firing_key,created_at,expires_at,status,action,evidence,assessment,${tradeOutcomeColumns}
      FROM strategy_rule_action_requests WHERE take_id=$1 AND id=$2`,[request.takeId,request.requestId])).rows[0];
     if(!row)throw Error('Rule history unavailable');
     return {retention:{...ruleHistoryPolicy,pendingProtected:true,deduplicationRetained:true},mode,deliveryEnabled,request:row};
@@ -32,7 +32,8 @@ export async function readRuleEvidence(tx:Pick<DatabaseClient,'query'>,request:z
    const rows=(await tx.query<Row>(`SELECT id,draft_revision,rule_id,created_at,expires_at,status,
     action->>'kind' AS action_kind,evidence->>'reason' AS trigger_reason,evidence->'rule'->>'name' AS rule_name,
     ${tradeOutcomeColumns},
-    evidence->'context'->>'status' AS context_status,evidence->'context'->>'reason' AS context_reason
+    evidence->'context'->>'status' AS context_status,evidence->'context'->>'reason' AS context_reason,
+    assessment->>'verdict' AS verdict,assessment->>'summary' AS summary
     FROM strategy_rule_action_requests WHERE take_id=$1
     AND ($2::timestamptz IS NULL OR (created_at,id)<($2::timestamptz,$3::uuid))
     ORDER BY created_at DESC,id DESC LIMIT $4`,[request.takeId,request.before?.createdAt??null,request.before?.id??null,request.limit+1])).rows;

@@ -190,6 +190,8 @@ test('an automatic rule run suggests a Take change without touching the draft; t
  let view=(await f.service.read(t))!;expect(view.draft.metadata.title).toBe('Member draft');
  expect(view.suggestions).toEqual([{proposalId:result.proposalId,ruleName:'BTC drop',createdAt:expect.any(String),note:null}]);
  view=(await f.service.dismissSuggestion({targetTakeId:t,proposalId:result.proposalId!}))!;expect(view.suggestions).toEqual([]);expect(view.draft.metadata.title).toBe('Member draft');
+ // The agent reads what the member turned down, with the targets it had proposed.
+ f.active.add(run.id);expect(((await f.service.agentRead(run.id)) as {dismissedSuggestions:unknown[]}).dismissedSuggestions).toEqual([{proposalId:result.proposalId,ruleName:'BTC drop',note:null,dismissedAt:expect.any(String),weights:[{venue:'robinhood',symbol:'VTI',percent:100}],cashPercent:expect.any(Number)}]);
  const again={...input(t,view),metadata:{...input(t,view).metadata,title:'Second suggestion'}};
  const second=await f.service.agentPropose(run.id,again) as {proposalId:string};expect((await f.service.read(t))!.suggestions).toHaveLength(1);
  const applied=ok(await f.service.useRevision({...action((await f.service.read(t))!),proposalId:second.proposalId}));
@@ -197,4 +199,16 @@ test('an automatic rule run suggests a Take change without touching the draft; t
  // A chat run (someone watching) still proposes straight into the draft.
  const chat=await f.run(t);const direct=input(t,applied.view);direct.metadata.title='Chat edit';
  await f.service.agentPropose(chat.id,direct);expect((await f.service.read(t))!.draft.metadata.title).toBe('Chat edit');
+});
+test('candidates the AI left out keep their reasons through drafts and commits, and cannot also be holdings',async()=>{
+ const f=await fixture(),t=await f.take(),run=await f.run(t);f.active.add(run.id);
+ const proposal=input(t);proposal.metadata.considered=[{subject:'OKLO',instrument:{venue:'robinhood',symbol:'OKLO'},reason:'Pre-revenue with no licensed reactor yet.'},{subject:'Uranium miners (individual names)',reason:'Covered by the ETF.'}];
+ await f.service.agentPropose(run.id,proposal);
+ const committed=ok(await f.service.commit(action((await f.service.read(t))!)));
+ expect(committed.view.draft.metadata.considered).toEqual(proposal.metadata.considered);
+ expect(((await f.service.agentRead(run.id)) as {basket:BasketView}).basket.draft.metadata.considered?.map(c=>c.subject)).toEqual(['OKLO','Uranium miners (individual names)']);
+ const clash=input(t,committed.view);clash.metadata.considered=[{subject:'VTI',instrument:{venue:'robinhood',symbol:'VTI'},reason:'Too broad.'}];
+ await expect(f.service.agentPropose(run.id,clash)).rejects.toThrow('cannot also be a holding');
+ const unexplained=input(t,committed.view);unexplained.metadata.considered=[{subject:'SMR',reason:' '}];
+ await expect(f.service.agentPropose(run.id,unexplained)).rejects.toThrow();
 });

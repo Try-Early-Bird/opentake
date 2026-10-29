@@ -42,6 +42,8 @@ test('chat proposals preserve accepted rules until atomic approval, and support 
   const edit=await f.service.propose(f.run,await f.propose({schemaVersion:1,rules:[{...f.rule,name:'Updated'},second]}));
   await f.runner.tick();expect((await f.runner.inspect(f.take)).enrollment).toMatchObject({enabled:true,draft_revision:accepted.revision});expect((await f.service.read(f.take)).config.rules[0].name).toBe(f.rule.name);
   await f.service.decide(edit.proposal.id,'dismiss');expect((await f.service.read(f.take)).revision).toBe(accepted.revision);
+  // The agent sees what the member turned down, so it does not propose it again without a new reason.
+  expect((await f.service.agentRead(f.run)).dismissedProposals).toEqual([{id:edit.proposal.id,proposedAt:expect.any(String),rules:[{name:'Updated',action:f.rule.action.kind},{name:second.name,action:second.action.kind}]}]);
   const next=await f.service.propose(f.run,await f.propose({schemaVersion:1,rules:[second]}));await f.service.decide(next.proposal.id,'accept');
   const updated=await f.service.read(f.take);expect(updated.config.rules.map(r=>r.id)).toEqual([second.id]);expect((await f.runner.inspect(f.take)).enrollment).toMatchObject({enabled:true,draft_revision:updated.revision});
   expect((await f.service.decide(next.proposal.id,'accept')).revision).toBe(updated.revision);

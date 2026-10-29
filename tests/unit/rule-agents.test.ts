@@ -179,3 +179,43 @@ test('prompt-injection guard: evidence is fenced, and a run started from instruc
   expect(runSuspicion(flagged)).toEqual({sources:['trigger evidence'],signals:['instruction_override','trade_imperative']});
  }finally{await f.close();}
 });
+
+test('a rule run reports its verdict: the notification leads with it, only needs_you asks for attention, and history shows it',async()=>{
+ const f=await fixture();try{
+  const id=await f.fire(),run=randomUUID();
+  await f.db.query("INSERT INTO take_runs(id,take_id,request_id,state,configuration) VALUES($1,$2,$3,'running',$4)",[run,f.take,randomUUID(),JSON.stringify({unattended:true,rule:{requestId:id}})]);
+  f.setNext(async()=>({status:'started',runId:run,done:new Promise(()=>{})}));await f.tick();
+  await expect(f.agents.reportAssessment(run,{verdict:'urgent',summary:'x'})).rejects.toThrow();
+  expect(await f.agents.reportAssessment(run,{verdict:'watch',summary:'First look.'})).toEqual({status:'recorded',verdict:'watch'});
+  expect(await f.agents.reportAssessment(run,{verdict:'needs_you',summary:'Drop is news-driven: exchange outage.',evidence:['BTC 79000']})).toMatchObject({verdict:'needs_you'});
+  await f.db.query("UPDATE take_runs SET state='completed' WHERE id=$1",[run]);await f.tick();
+  expect(f.notify).toHaveBeenCalledWith(expect.objectContaining({requestId:id,title:'Rule agent: needs you',body:'Drop is news-driven: exchange outage.',attention:true}));
+  const {readRuleEvidence}=await import('../../src/main/strategies/rule-evidence');
+  const history=await readRuleEvidence(f.db as never,{action:'rule-evidence-list',takeId:f.take,limit:5});
+  expect(history.items?.[0]).toMatchObject({id,verdict:'needs_you',summary:'Drop is news-driven: exchange outage.'});
+ }finally{await f.close();}
+});
+
+test('only an automatic rule run can report an assessment',async()=>{
+ const f=await fixture();try{
+  const chat=await f.startedRun();
+  await expect(f.agents.reportAssessment(chat,{verdict:'no_action',summary:'Nothing to do.'})).rejects.toThrow('Only an automatic run');
+  const done=randomUUID(),id=await f.fire();
+  await f.db.query("INSERT INTO take_runs(id,take_id,request_id,state,configuration) VALUES($1,$2,$3,'completed',$4)",[done,f.take,randomUUID(),JSON.stringify({unattended:true,rule:{requestId:id}})]);
+  await expect(f.agents.reportAssessment(done,{verdict:'no_action',summary:'Late.'})).rejects.toThrow('Only an automatic run');
+ }finally{await f.close();}
+});
+
+test('a calm verdict needs no attention, and a run that reports none keeps the plain notice',async()=>{
+ const f=await fixture();try{
+  const id=await f.fire(),run=randomUUID();
+  await f.db.query("INSERT INTO take_runs(id,take_id,request_id,state,configuration) VALUES($1,$2,$3,'running',$4)",[run,f.take,randomUUID(),JSON.stringify({unattended:true,rule:{requestId:id}})]);
+  f.setNext(async()=>({status:'started',runId:run,done:new Promise(()=>{})}));await f.tick();
+  await f.agents.reportAssessment(run,{verdict:'no_action',summary:'Ordinary volatility; no news.'});
+  await f.db.query("UPDATE take_runs SET state='completed' WHERE id=$1",[run]);await f.tick();
+  expect(f.notify).toHaveBeenCalledWith(expect.objectContaining({requestId:id,title:'Rule agent: no action needed',attention:false}));
+  const other=await f.fire(),silent=await f.startedRun();f.setNext(async()=>({status:'started',runId:silent,done:new Promise(()=>{})}));await f.tick();
+  await f.db.query("UPDATE take_runs SET state='completed' WHERE id=$1",[silent]);await f.tick();
+  expect(f.notify).toHaveBeenCalledWith(expect.objectContaining({requestId:other,title:'Rule agent finished'}));
+ }finally{await f.close();}
+});

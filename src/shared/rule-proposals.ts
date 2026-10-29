@@ -10,6 +10,10 @@ export const ruleTradeRequestInput=z.discriminatedUnion('kind',[
  z.object({kind:z.literal('rebalance_to_target'),accountId:z.uuid(),reason:z.string().trim().min(1).max(1000)}).strict(),
  z.object({kind:z.enum(['deploy_cash','reduce']),accountId:z.uuid(),amount:requestAmount,reason:z.string().trim().min(1).max(1000)}).strict(),
 ]);
+/** An automatic run's conclusion. App-observed outcomes (proposals, trades) are recorded separately. */
+export const ruleAssessmentVerdicts=['no_action','watch','needs_you'] as const;
+export const ruleAssessmentInput=z.object({verdict:z.enum(ruleAssessmentVerdicts),summary:z.string().trim().min(1).max(280),evidence:z.array(z.string().trim().min(1).max(200)).max(8).default([])}).strict();
+export type RuleAssessment=z.output<typeof ruleAssessmentInput>;
 export interface RuleProposal {/** Set when an automatic rule run proposed it. */ruleName?:string|null;id:string;takeId:string;messageId:string;status:'pending'|'accepted'|'dismissed'|'superseded';baseRevision:number;baseVersion:string;baseInputRevision:number;config:RuleDraftConfig;inputs:TakeInputsConfig;before:RuleDraftConfig;beforeInputs:TakeInputsConfig;createdAt:string}
 export interface RuleLifecycle {reviewId?:string;hidden:boolean;runs?:number;lastAt?:string;status:'Waiting'|'Awaiting approval'|'In progress'|'Needs attention'|'Finished'}
 export interface RuleReview {lifecycle?:Record<string,RuleLifecycle>;tradingEnabled?:boolean;tradingRuleIds?:string[];disabledRuleIds?:string[];/** The committed Take's own rebalancing, for what keeps a target change. */rebalancing?:{schedule:string;drift:boolean}|null;accounts?:Record<string,{label:string;venue:string}>;confirmTrades?:boolean;takeId:string;revision:number;version:string;inputRevision:number;config:RuleDraftConfig;inputs:TakeInputsConfig;proposals:RuleProposal[];stale:boolean;execution:'preview_only'|'notifications_only'|'trading_only'|'notifications_and_trading'}
