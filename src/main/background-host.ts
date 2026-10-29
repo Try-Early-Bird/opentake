@@ -214,7 +214,7 @@ export function bootBackgroundHost(profile: string, build: string) {
       signal: input.signal, budgets: input.budgets, usage: input.usage, limits }, {
       audit: aiAudit, budgets,
       authorize: async () => { grant = capabilities.issue(input.id, input.takeId, limits?.absoluteMs); await platformAccess.ensure(input.id); },
-      execute: runtime => executeChat({ ...input, ...runtime, managedBudget: true, ...(limits?.modelTurns?{maxTurns:limits.modelTurns}:{}), gateway: { port: rpc!.manifest.port, token: grant!.token } }),
+      execute: runtime => executeChat({ ...input, ...runtime, managedBudget: true, subagents: configuration.subagents === true, ...(limits?.modelTurns?{maxTurns:limits.modelTurns}:{}), gateway: { port: rpc!.manifest.port, token: grant!.token } }),
       cleanup: async () => { grant?.revoke(); await mcp.expireRun(input.id); },
     });
   }, models, takeId => mcp.policySnapshot(takeId),undefined,async takeId=>{
@@ -370,7 +370,7 @@ export function bootBackgroundHost(profile: string, build: string) {
   const mcp = createMcpManagement(database,secrets,join(profile,'mcp-temporary'),activeRun,async (name,input,signal,run,call)=>callOpentakeTool({
     dataSourceList:async()=>{if(!run)throw Error('Run required');return sourceChat.list(run);},
     dataSourceRead:async input=>{if(!run)throw Error('Run required');return sourceChat.read(run,input);},
-    rules:async(name,input)=>{if(!run)throw Error('Run required');await platformAccess.ensure(run);return name==='opentake_read_rules'?ruleProposals.agentRead(run):name==='opentake_read_rule_activity'?ruleProposals.agentActivity(run,input):name==='opentake_request_trade'?ruleAgents.requestTrade(run,input):ruleProposals.propose(run,input);},
+    rules:async(name,input)=>{if(!run)throw Error('Run required');await platformAccess.ensure(run);return name==='opentake_read_rules'?ruleProposals.agentRead(run):name==='opentake_read_rule_activity'?ruleProposals.agentActivity(run,input):name==='opentake_request_trade'?ruleAgents.requestTrade(run,input):name==='opentake_report_assessment'?ruleAgents.reportAssessment(run,input):ruleProposals.propose(run,input);},
     takeInputs:async()=>{if(!run)throw Error('Run required');return takeInputChat(run);},
     documents:async(input)=>{if(!run)throw new Error('Run required');return documents.tool(run,input,signal);},
     strategy:async(name,input)=>{if(!run)throw new Error('Run required');return name==='opentake_propose_strategy'?strategies.agentPropose(run,input,call):strategies.agentRead(run,z.object({targetTakeId:z.uuid().optional()}).strict().parse(input).targetTakeId);},
@@ -836,6 +836,8 @@ export function bootBackgroundHost(profile: string, build: string) {
           if(method==='takes:message-versions')return await takes.messageVersions(args[0],args[1],args[2]);
           if(method==='takes:budgets')return await takes.budgets();
           if(method==='takes:save-budgets')return await takes.saveBudgets(args[0]);
+          if(method==='takes:chat-run-limits')return await takes.chatRunLimits();
+          if(method==='takes:save-chat-run-limits')return await takes.saveChatRunLimits(args[0]);
           if(method==='takes:automatic-limits')return await takes.automaticLimits();
           if(method==='takes:save-automatic-limits')return await takes.saveAutomaticLimits(args[0]);
           if(method==='takes:usage-history')return await takes.usageHistory(args[0],args[1]);

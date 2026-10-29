@@ -8,6 +8,12 @@ import { claudeExecutor } from '../../../src/main/take-runtime';
 import type { SecretStore } from '../../../src/main/secret-store';
 import type { AuditCapture } from '../../../src/main/ai-audit';
 
+// Fixture scripts read their data from a file beside them rather than having it spliced into their code.
+async function writeFixture(script:string,data:unknown,body:string){
+ await writeFile(join(script,'..','fixture-data.json'),JSON.stringify(data));
+ await writeFile(script,`const data=require(require('node:path').join(__dirname,'fixture-data.json'));${body}`);
+}
+
 test('Take runtime passes only a scoped gateway credential through environment and cleans isolated files',async()=>{
  const root=await mkdtemp(join(tmpdir(),'opentake-runtime-'));
  const token=`sk-ant-oat01-${'synthetic'.repeat(8)}`;
@@ -18,7 +24,9 @@ test('Take runtime passes only a scoped gateway credential through environment a
  const text:string[]=[];
  const execute=claudeExecutor(store,root,'/synthetic/bridge.js',((_exe,args,options)=>{
   expect(args.join(' ')).not.toContain(token);expect(args.join(' ')).not.toContain(capability);
-  expect(args[args.indexOf('--max-turns')+1]).toBe('20');
+  expect(args[args.indexOf('--max-turns')+1]).toBe('100');
+  // Without the member's subagent setting, no built-in tools at all.
+  expect(args[args.indexOf('--tools')+1]).toBe('');expect(args).not.toContain('--agents');
   expect(options.env.OPENTAKE_GATEWAY_TOKEN).toBe(capability);
   const mcp=JSON.parse(args[args.indexOf('--mcp-config')+1]).mcpServers.opentake;
   expect(mcp.args).toEqual(['/synthetic/bridge.js','--run',run]);
@@ -32,13 +40,46 @@ test('Take runtime passes only a scoped gateway credential through environment a
  }finally{await rm(root,{recursive:true,force:true});}
 });
 
+test('Claude offers a research subagent with Opentake tools only, keeps its text out of the reply and its call out of the replay',async()=>{
+ const root=await mkdtemp(join(tmpdir(),'opentake-runtime-subagent-'));
+ const store:SecretStore={available:()=>true,has:async()=>true,get:async()=>JSON.stringify({version:1,kind:'oauth_token',token:`sk-ant-oat01-${'synthetic'.repeat(8)}`}),set:async()=>{},delete:async()=>{}};
+ const script=join(root,'fixture.cjs');
+ const events=[
+  {type:'assistant',message:{content:[{type:'tool_use',id:'agent-1',name:'Agent',input:{subagent_type:'researcher',prompt:'Research NVDA'}}]},parent_tool_use_id:null},
+  {type:'stream_event',event:{type:'content_block_delta',delta:{type:'text_delta',text:'Subagent thinking aloud'}},parent_tool_use_id:'agent-1'},
+  {type:'assistant',message:{content:[{type:'text',text:'Subagent draft'},{type:'tool_use',id:'quote-1',name:'mcp__opentake__robinhood_get_quotes',input:{symbols:['NVDA']}}]},parent_tool_use_id:'agent-1'},
+  {type:'user',message:{content:[{type:'tool_result',tool_use_id:'quote-1',content:'NVDA 100'}]},parent_tool_use_id:'agent-1'},
+  {type:'user',message:{content:[{type:'tool_result',tool_use_id:'agent-1',content:[{type:'text',text:'NVDA summary'}]}]},parent_tool_use_id:null},
+  {type:'assistant',message:{content:[{type:'tool_use',id:'read-1',name:'mcp__opentake__opentake_read_strategy',input:{}}]},parent_tool_use_id:null},
+  {type:'user',message:{content:[{type:'tool_result',tool_use_id:'read-1',content:'Draft'}]},parent_tool_use_id:null},
+  {type:'stream_event',event:{type:'content_block_delta',delta:{type:'text_delta',text:'Lead answer'}},parent_tool_use_id:null},
+  {type:'result',subtype:'success',result:'Lead answer'}];
+ await writeFixture(script,events,`process.stdin.resume();process.stdin.on('end',()=>{for(const e of data)console.log(JSON.stringify(e));});`);
+ const text:string[]=[];const tools:string[]=[];const replay:unknown[]=[];
+ const execute=claudeExecutor(store,root,'/synthetic/bridge.js',((_exe,args,options)=>{
+  expect(args[args.indexOf('--tools')+1]).toBe('Agent');
+  expect(options.env.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS).toBe('1');
+  expect(args[args.indexOf('--allowedTools')+1]).toBe('mcp__opentake__*,Agent');
+  const agents=JSON.parse(args[args.indexOf('--agents')+1]);
+  expect(Object.keys(agents)).toEqual(['researcher']);expect(agents.researcher.tools).toBeUndefined();
+  expect(agents.researcher.disallowedTools).toEqual(['Agent','mcp__opentake__opentake_propose_strategy','mcp__opentake__opentake_propose_rules','mcp__opentake__opentake_request_trade','mcp__opentake__opentake_request_tool_access','mcp__opentake__opentake_report_assessment']);
+  return spawn(process.execPath,[script],options);
+ }) as typeof spawn,()=>({executable:'/synthetic/claude',args:[]}));
+ try{
+  await execute({id:randomUUID(),takeId:randomUUID(),gateway:{port:12345,token:'a'.repeat(64)},selection:{provider:'claude',model:'sonnet'},messages:[],instructions:'Synthetic',signal:new AbortController().signal,image:async()=>'',text:v=>text.push(v),tool:v=>tools.push(`${v.name}:${v.state}`),replay:v=>replay.push(v),subagents:true});
+  expect(text.join('')).not.toContain('Subagent');expect(text.at(-1)).toBe('Lead answer');
+  expect(tools).toEqual(['Agent:running','robinhood_get_quotes:running','robinhood_get_quotes:completed','Agent:completed','opentake_read_strategy:running','opentake_read_strategy:completed']);
+  expect(replay).toEqual([{role:'assistant',content:[{type:'tool_use',id:'read-1',name:'mcp__opentake__opentake_read_strategy',input:{}}]},{role:'user',content:[{type:'tool_result',tool_use_id:'read-1',is_error:false,content:'Draft'}]}]);
+ }finally{await rm(root,{recursive:true,force:true});}
+});
+
 test('Take runtime delivers image bytes to the child and reports incomplete streams as failures',async()=>{
  const root=await mkdtemp(join(tmpdir(),'opentake-runtime-image-'));
  const token=`sk-ant-oat01-${'synthetic'.repeat(8)}`;
  const store:SecretStore={available:()=>true,has:async()=>true,get:async()=>JSON.stringify({version:1,kind:'oauth_token',token}),set:async()=>{},delete:async()=>{}};
  const script=join(root,'fixture.cjs');
  const bytes='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jVb8AAAAASUVORK5CYII=';
- await writeFile(script,`let body='';process.stdin.on('data',d=>body+=d);process.stdin.on('end',()=>{const image=JSON.parse(body).message.content.find(p=>p.type==='image');if(image?.source.data!==${JSON.stringify(bytes)})process.exit(1);console.log(JSON.stringify({type:'result',subtype:'success',result:'Image received'}));});`);
+ await writeFixture(script,bytes,`let body='';process.stdin.on('data',d=>body+=d);process.stdin.on('end',()=>{const image=JSON.parse(body).message.content.find(p=>p.type==='image');if(image?.source.data!==data)process.exit(1);console.log(JSON.stringify({type:'result',subtype:'success',result:'Image received'}));});`);
  const execute=claudeExecutor(store,root,'/synthetic/bridge.js',((_exe,_args,options)=>spawn(process.execPath,[script],options)) as typeof spawn,()=>({executable:'/synthetic/claude',args:[]}));
  const output:string[]=[];const id=randomUUID();
  const input={id:randomUUID(),takeId:randomUUID(),gateway:{port:12345,token:'a'.repeat(64)},selection:{provider:'claude' as const,model:'sonnet'},instructions:'Synthetic',signal:new AbortController().signal,image:async()=>`data:image/png;base64,${bytes}`,text:(v:string)=>output.push(v),tool:()=>{},messages:[{id,parentId:null,role:'user' as const,text:'Read this reference',images:[{id:randomUUID(),name:'reference.png',mime:'image/png',width:1,height:1,bytes:68}],createdAt:new Date().toISOString(),selection:{provider:'claude' as const,model:'sonnet'},state:'completed' as const,tools:[]}]};
@@ -47,7 +88,7 @@ test('Take runtime delivers image bytes to the child and reports incomplete stre
   await writeFile(script,`process.stdin.resume();process.stdin.on('end',()=>{console.log('malformed output');});`);
   await expect(execute(input)).rejects.toThrow('before completing');
   await writeFile(script,`process.stdin.resume();process.stdin.on('end',()=>{console.log(JSON.stringify({type:'stream_event',event:{type:'content_block_delta',delta:{type:'text_delta',text:'Partial answer'}}}));console.log(JSON.stringify({type:'result',subtype:'error_max_turns',is_error:true}));});`);
-  await expect(execute(input)).rejects.toThrow('20 model-turn limit');expect(output).toContain('Partial answer');
+  await expect(execute(input)).rejects.toThrow('100 model-turn limit');expect(output).toContain('Partial answer');
   expect(await readdir(join(root,'chat-temporary'))).toEqual([]);
  }finally{await rm(root,{recursive:true,force:true});}
 });
@@ -85,10 +126,10 @@ test('audit captures supplied context, provider output and usage before resolvin
  const token=`sk-ant-oat01-${'synthetic'.repeat(8)}`,capability='synthetic-gateway-capability';
  const store:SecretStore={available:()=>true,has:async()=>true,get:async()=>JSON.stringify({version:1,kind:'oauth_token',token}),set:async()=>{},delete:async()=>{}};
  const script=join(root,'fixture.cjs');
- await writeFile(script,`process.stdin.resume();process.stdin.on('end',()=>{for(const event of ${JSON.stringify([
+ await writeFixture(script,[
   {type:'assistant',message:{id:'msg-fixture',model:'resolved-model',content:[{type:'thinking',thinking:'Visible synthetic reasoning'},{type:'text',text:capability}]}},
   {type:'result',subtype:'success',result:'Synthetic answer',usage:{input_tokens:12,output_tokens:4},total_cost_usd:0.01}
- ])})console.log(JSON.stringify(event));});`);
+ ],`process.stdin.resume();process.stdin.on('end',()=>{for(const event of data)console.log(JSON.stringify(event));});`);
  const events:AuditCapture[]=[];
  const execute=claudeExecutor(store,root,'/synthetic/bridge',((_exe,_args,options)=>spawn(process.execPath,[script],options)) as typeof spawn,()=>({executable:'/synthetic/claude',args:[]}));
  const input={id:randomUUID(),takeId:randomUUID(),gateway:{port:12345,token:capability},selection:{provider:'claude' as const,model:'default'},messages:[],instructions:'Synthetic instructions',signal:new AbortController().signal,image:async()=>'',text:()=>{},tool:()=>{}};
@@ -177,6 +218,6 @@ test.each([undefined, 'high'] as const)('Claude effort %s is passed only when ex
 
 test('a rule run passes its own model-turn limit to OpenCode',async()=>{
  const {opencodeChatConfig}=await import('../../../src/main/opencode-chat');
- expect((opencodeChatConfig('x','bridge','run',1) as {agent:{opentake:{steps:number}}}).agent.opentake.steps).toBe(20);
+ expect((opencodeChatConfig('x','bridge','run',1) as {agent:{opentake:{steps:number}}}).agent.opentake.steps).toBe(100);
  expect((opencodeChatConfig('x','bridge','run',1,undefined,3) as {agent:{opentake:{steps:number}}}).agent.opentake.steps).toBe(3);
 });

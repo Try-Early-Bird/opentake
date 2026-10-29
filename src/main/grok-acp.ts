@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm, lstat, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { z } from 'zod';
 import { resolveAiCli, type CliCommand } from './ai-runtime';
+import { chatLimits } from '../shared/chat-limits';
 import { atomicPrivateWrite } from './private-files';
 import type { SecretStore } from './secret-store';
 import { AdapterError, manageChild, nativeFailure, protocolError } from './native-chat-process';
@@ -10,13 +11,14 @@ import { checkGrokVersion, confinedGrok, grokEnvironment, grokSecretRef, validat
 
 export interface GrokDependencies {
   launch?: typeof spawn; command?: () => CliCommand; version?: typeof checkGrokVersion;
-  confine?: typeof confinedGrok; requestMs?: number;
+  confine?: typeof confinedGrok; requestMs?: number; env?: Record<string, string>;
 }
 // In 1.0.46, top-level --tools/--max-turns flags do not configure agent stdio.
 // Enforce the toolset via session/new's agentProfile and permissions via config.
+// maxTurns is the default; each run passes its own limit.
 export const grokAgentProfile = {
   name: 'opentake', description: 'Opentake chat through its authorized MCP gateway',
-  tools: ['search_tool', 'use_tool'], permissionMode: 'dontAsk', maxTurns: 20,
+  tools: ['search_tool', 'use_tool'], permissionMode: 'dontAsk', maxTurns: chatLimits.modelTurns as number,
   discoverSkills: false, agentsMd: false, injectDefaultTools: false,
 };
 export const grokChatConfig = `[cli]
@@ -43,8 +45,51 @@ mcps = false
 [compat.cursor]
 mcps = false
 `;
+// With subagents: only the researcher type exists, at one level, and it reaches a
+// second relayed server that lists read tools only (inheritance is per server).
+// Grok refuses every spawn while an edit deny rule exists; no toolset holds an edit tool.
+export const grokSubagentConfig = `[cli]
+auto_update = false
+[ui]
+permission_mode = "dontAsk"
+[permission]
+rules = [
+  { action = "allow", tool = "mcp", pattern = "opentake__*" },
+  { action = "allow", tool = "mcp", pattern = "opentake-research__*" },
+  { action = "deny", tool = "read" },
+  { action = "deny", tool = "bash" }
+]
+[subagents]
+enabled = true
+max_depth = 1
+[subagents.toggle]
+general-purpose = false
+explore = false
+plan = false
+[memory]
+enabled = false
+[memory_v2]
+enabled = false
+[managed_mcps]
+enabled = false
+[compat.claude]
+mcps = false
+agents = false
+[compat.cursor]
+mcps = false
+agents = false
+`;
+export const grokResearchServer = 'opentake-research';
+export function grokResearcherAgent(description: string, prompt: string) {
+  return `---\nname: researcher\ndescription: ${description}\ntools: search_tool, use_tool\nmcpInheritance:\n  named:\n    - ${grokResearchServer}\n---\n${prompt}\n`;
+}
+/** Loopback PreToolUse hook: Grok asks it before each spawn, and it keeps the child in the foreground. */
+export function grokSpawnHook(url: string) {
+  return JSON.stringify({ hooks: { PreToolUse: [{ matcher: 'spawn_subagent|task|Task|Agent', hooks: [{ type: 'http', url, timeout: 10 }] }] } });
+}
+export interface GrokSetup { config: string; files: Record<string, string> }
 export async function withGrok<T>(store: SecretStore, profile: string, signal: AbortSignal, deps: GrokDependencies,
-  work: (home: string, command: CliCommand, credential: string, cli: { version: string | null; verified: boolean }) => Promise<T>): Promise<T> {
+  work: (home: string, command: CliCommand, credential: string, cli: { version: string | null; verified: boolean }) => Promise<T>, setup?: GrokSetup): Promise<T> {
   signal.throwIfAborted();
   const credential = await store.get(grokSecretRef);
   if (!credential) throw new AdapterError('Connect Grok in Settings.');
@@ -58,7 +103,8 @@ export async function withGrok<T>(store: SecretStore, profile: string, signal: A
     signal.throwIfAborted();
     await mkdir(join(home, '.grok'), { mode: 0o700, recursive: true });
     await atomicPrivateWrite(join(home, '.grok', 'auth.json'), Buffer.from(credential)); written = true;
-    await atomicPrivateWrite(join(home, '.grok', 'config.toml'), Buffer.from(grokChatConfig));
+    await atomicPrivateWrite(join(home, '.grok', 'config.toml'), Buffer.from(setup?.config ?? grokChatConfig));
+    for (const [path, content] of Object.entries(setup?.files ?? {})) { await mkdir(join(home, '.grok', path, '..'), { mode: 0o700, recursive: true }); await atomicPrivateWrite(join(home, '.grok', path), Buffer.from(content)); }
     return await work(home, (deps.confine ?? confinedGrok)(command, home, true), credential, cli);
   } catch (error) {
     if (signal.aborted) throw signal.reason instanceof Error && signal.reason.name !== 'AbortError' ? signal.reason : new AdapterError('Response stopped.');
@@ -86,7 +132,7 @@ type Event = z.infer<typeof envelope>;
 export function grokAcp(home: string, command: CliCommand, signal: AbortSignal, deps: GrokDependencies,
   onEvent: (event: Event, respond: (result: unknown) => void) => Promise<void>) {
   const child = (deps.launch ?? spawn)(command.executable, [...command.args, '--no-auto-update', 'agent', 'stdio'],
-    { cwd: home, env: grokEnvironment(home), detached: process.platform !== 'win32', stdio: ['pipe', 'pipe', 'pipe'] });
+    { cwd: home, env: { ...grokEnvironment(home), ...deps.env }, detached: process.platform !== 'win32', stdio: ['pipe', 'pipe', 'pipe'] });
   // Register cancellation before manageChild's kill listener, to send ACP cancel first.
   let sessionId = '', failure: Error | undefined, sequence = 0, buffer = '', bytes = 0, closing = false;
   let queue = Promise.resolve(); const work = new Set<Promise<void>>();
@@ -131,6 +177,8 @@ export function grokAcp(home: string, command: CliCommand, signal: AbortSignal, 
   void state.done.then(async () => { await queue; if (!closing) fail(new AdapterError('Grok exited before completing the request.')); });
   return {
     session(id: string) { sessionId = id; },
+    /** Settles when the CLI process ends. */
+    exited: state.done,
     request(method: string, params: unknown, timeout = deps.requestMs ?? 30000): Promise<unknown> {
       return new Promise((resolve, reject) => {
         if (failure || signal.aborted || closing) { reject(failure ?? new AdapterError('Response stopped.')); return; }

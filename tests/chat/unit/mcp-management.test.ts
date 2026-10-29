@@ -283,13 +283,13 @@ test('Ask take mode also gates built-in platform tools',async()=>{
  }finally{await f.close();}
 });
 
-test('host prevents a thirty-first tool dispatch and counts failed attempts',async()=>{
+test('host prevents a two-hundred-first tool dispatch and counts failed attempts',async()=>{
  const {createRunBudget}=await import('../../../src/main/run-budget');
  const budget=createRunBudget(new AbortController().signal);const f=await fixture({budget:()=>budget});
  try{
   f.client.callTool.mockRejectedValue(new Error('Synthetic dispatch failure'));
-  for(let i=0;i<30;i++)expect((await f.service.call(f.run,f.name,{})).isError).toBe(true);
-  expect(JSON.stringify(await f.service.call(f.run,f.name,{}))).toContain('30 tool-call limit');expect(f.client.callTool).toHaveBeenCalledTimes(30);expect(budget.signal.aborted).toBe(true);
+  for(let i=0;i<200;i++)expect((await f.service.call(f.run,f.name,{})).isError).toBe(true);
+  expect(JSON.stringify(await f.service.call(f.run,f.name,{}))).toContain('200 tool-call limit');expect(f.client.callTool).toHaveBeenCalledTimes(200);expect(budget.signal.aborted).toBe(true);
  }finally{budget.finish();await f.close();}
 });
 

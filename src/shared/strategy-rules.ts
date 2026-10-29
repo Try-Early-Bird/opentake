@@ -38,7 +38,7 @@ export const ruleAction=z.discriminatedUnion('kind',[
   capabilities:z.object({tools:z.array(z.string().min(1).max(160)).max(64).refine(unique),accountIds:z.array(z.uuid()).max(16).refine(unique),actions:z.array(allowedAction).min(1).max(8).refine(unique),maxTradeNotionalUsd:positive.optional()}).strict(),
   // Each limit is optional: a run uses the lower of the rule's value and AI settings ›
   // Automatic runs, which is also the default. maxOutputTokens gates Codex and Grok.
-  budget:z.object({maxDurationMs:z.number().int().min(1000).max(3600000).optional(),maxToolCalls:z.number().int().min(1).max(100).optional(),maxTurns:z.number().int().min(1).max(20).optional(),maxCostUsd:positive.optional(),maxOutputTokens:z.number().int().min(1).max(10_000_000).optional()}).strict().default({}),
+  budget:z.object({maxDurationMs:z.number().int().min(1000).max(3600000).optional(),maxToolCalls:z.number().int().min(1).max(500).optional(),maxTurns:z.number().int().min(1).max(200).optional(),maxCostUsd:positive.optional(),maxOutputTokens:z.number().int().min(1).max(10_000_000).optional()}).strict().default({}),
  }).strict(),
 ]);
 export const rulePolicy=z.object({cooldownMs:z.number().int().min(0).max(365*86400000),holdMs:z.number().int().min(0).max(86400000),maxRuns:z.number().int().min(1).max(100000),expiresAfterMs:z.number().int().min(1000).max(86400000),approval:z.enum(['ask','within_existing_policy'])}).strict();

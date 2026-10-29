@@ -64,11 +64,26 @@ test('a rule run waits for a busy Take, offers no tools in an ask-mode Take, gat
 
 test('automatic run limits default sensibly, save within bounds, and reject anything outside them',async()=>{
  const f=await fixture();try{
-  expect(await f.service.automaticLimits()).toEqual({durationMs:300_000,toolCalls:20,modelTurns:20,costUsd:1,outputTokens:50_000});
+  expect(await f.service.automaticLimits()).toEqual({durationMs:900_000,toolCalls:100,modelTurns:100,costUsd:1,outputTokens:50_000});
   const next={durationMs:120_000,toolCalls:10,modelTurns:8,costUsd:0.25,outputTokens:20_000};
   expect(await f.service.saveAutomaticLimits(next)).toEqual(next);expect(await f.service.automaticLimits()).toEqual(next);
-  for(const bad of [{...next,modelTurns:21},{...next,toolCalls:0},{...next,costUsd:0},{...next,durationMs:999},{...next,extra:1}])
+  for(const bad of [{...next,modelTurns:201},{...next,toolCalls:501},{...next,toolCalls:0},{...next,costUsd:0},{...next,durationMs:999},{...next,extra:1}])
    await expect(f.service.saveAutomaticLimits(bad)).rejects.toThrow();
   expect(await f.service.automaticLimits()).toEqual(next);
+ }finally{await f.close();}
+});
+
+test('chat limits default high, save within bounds, and apply to each new chat response',async()=>{
+ const f=await fixture();try{
+  expect(await f.service.chatRunLimits()).toEqual({durationMs:1_800_000,toolCalls:200,modelTurns:100,subagents:true});
+  const next={durationMs:600_000,toolCalls:40,modelTurns:12,subagents:false};
+  expect(await f.service.saveChatRunLimits(next)).toEqual(next);
+  for(const bad of [{...next,modelTurns:201},{...next,toolCalls:501},{...next,durationMs:59_999},{...next,subagents:'yes'},{...next,extra:1}])
+   await expect(f.service.saveChatRunLimits(bad)).rejects.toThrow();
+  const requestId=randomUUID();await f.service.send({requestId,takeId:f.id,parentId:null,text:'Research BTC',selection});await settle(f.service);
+  expect(await f.run(requestId)).toMatchObject({limits:{inferenceMs:600_000,absoluteMs:600_000,toolCalls:40,modelTurns:12},subagents:false});
+  // A rule run keeps the limits its rule and the automatic settings gave it.
+  const rule=f.input();await f.service.ruleRun(rule);await settle(f.service);
+  expect(await f.run(rule.requestId)).toMatchObject({limits:rule.limits,subagents:false});
  }finally{await f.close();}
 });

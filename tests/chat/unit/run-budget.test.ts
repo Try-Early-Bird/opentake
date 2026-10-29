@@ -10,9 +10,9 @@ test('absolute deadlines and user cancellation still stop a paused run',()=>{
  const second=createRunBudget(parent.signal);second.pause();parent.abort();expect(second.signal.aborted).toBe(true);second.finish();expect(vi.getTimerCount()).toBe(0);
 });
 
-test('tool dispatch budget permits thirty attempts then aborts even if attempts failed',()=>{
+test('tool dispatch budget permits two hundred attempts then aborts even if attempts failed',()=>{
  const budget=createRunBudget(new AbortController().signal);
- try{for(let i=0;i<30;i++)budget.toolDispatch();expect(budget.signal.aborted).toBe(false);expect(()=>budget.toolDispatch()).toThrow('30 tool-call');expect(budget.signal.aborted).toBe(true);expect(()=>budget.toolDispatch()).toThrow('30 tool-call');}finally{budget.finish();}
+ try{for(let i=0;i<200;i++)budget.toolDispatch();expect(budget.signal.aborted).toBe(false);expect(()=>budget.toolDispatch()).toThrow('200 tool-call');expect(budget.signal.aborted).toBe(true);expect(()=>budget.toolDispatch()).toThrow('200 tool-call');}finally{budget.finish();}
 });
 
 test('ending an adapter aborts pending tool work without cancelling the parent take',()=>{

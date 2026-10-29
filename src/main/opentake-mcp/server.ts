@@ -1,4 +1,4 @@
-import {RuleProposalError,ruleProposalInput,ruleTradeRequestInput,ruleActivityInput} from '../../shared/rule-proposals';
+import {RuleProposalError,ruleProposalInput,ruleTradeRequestInput,ruleActivityInput,ruleAssessmentInput} from '../../shared/rule-proposals';
 import {sourceReadInput} from '../data-sources/chat';
 import { z } from 'zod';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
@@ -29,7 +29,7 @@ export async function callOpentakeTool(services: OpentakeServices, name: string,
     }
     let data: unknown;
     if(name==='opentake_propose_strategy'||name==='opentake_read_strategy'){if(!services.strategy)throw new Error('Strategy authoring unavailable');data=await services.strategy(name,input);}
-    else if(name==='opentake_read_rules'||name==='opentake_propose_rules'||name==='opentake_read_rule_activity'||name==='opentake_request_trade'){const args=name==='opentake_read_rules'?z.object({}).strict().parse(input):name==='opentake_read_rule_activity'?ruleActivityInput.parse(input):name==='opentake_request_trade'?ruleTradeRequestInput.parse(input):ruleProposalInput.parse(input);if(!services.rules)throw Error('Rules unavailable');data=await services.rules(name,args);}
+    else if(name==='opentake_read_rules'||name==='opentake_propose_rules'||name==='opentake_read_rule_activity'||name==='opentake_request_trade'||name==='opentake_report_assessment'){const args=name==='opentake_read_rules'?z.object({}).strict().parse(input):name==='opentake_read_rule_activity'?ruleActivityInput.parse(input):name==='opentake_request_trade'?ruleTradeRequestInput.parse(input):name==='opentake_report_assessment'?ruleAssessmentInput.parse(input):ruleProposalInput.parse(input);if(!services.rules)throw Error('Rules unavailable');data=await services.rules(name,args);}
     else if(name==='opentake_list_data_sources'){z.object({}).strict().parse(input);if(!services.dataSourceList)throw Error('Sources unavailable');data=await services.dataSourceList();}
     else if(name==='opentake_read_data_source'){const args=sourceReadInput.parse(input);if(!services.dataSourceRead)throw Error('Sources unavailable');data=await services.dataSourceRead(args);}
     else if(name==='opentake_read_take_inputs'){z.object({}).strict().parse(input);if(!services.takeInputs)throw Error('Take inputs unavailable');data=await services.takeInputs();}
@@ -52,7 +52,7 @@ export async function callOpentakeTool(services: OpentakeServices, name: string,
     }
     return { content: [{ type: 'text', text: JSON.stringify(data) }] };
   } catch (error) {
-    if((name==='opentake_read_rules'||name==='opentake_propose_rules'||name==='opentake_read_rule_activity'||name==='opentake_request_trade')&&error instanceof RuleProposalError)return {isError:true,content:[{type:'text',text:error.message}]};
+    if((name==='opentake_read_rules'||name==='opentake_propose_rules'||name==='opentake_read_rule_activity'||name==='opentake_request_trade'||name==='opentake_report_assessment')&&error instanceof RuleProposalError)return {isError:true,content:[{type:'text',text:error.message}]};
     if(name==='opentake_documents')return {isError:true,content:[{type:'text',text:error instanceof DocumentError?error.message:'Document request failed. Check its arguments or try a simpler page.'}]};
     if ((name==='opentake_propose_strategy'||name==='opentake_read_strategy'||name==='opentake_read_strategy_investment'||name==='opentake_propose_rules') && error instanceof z.ZodError) {
       return {isError:true,content:[{type:'text',text:'Invalid strategy arguments: '+error.issues.map(issue=>issue.path.join('.')+': '+issue.message).join('; ')}]};

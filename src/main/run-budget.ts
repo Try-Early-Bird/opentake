@@ -1,6 +1,6 @@
 import { chatLimits } from '../shared/chat-limits';
 export class RunLimitError extends Error {}
-export const runLimits = { inferenceMs: 180_000, absoluteMs: 600_000, approvalMs: 120_000, toolMs: 60_000, gatewayMs: 210_000 } as const;
+export const runLimits = { inferenceMs: 1_200_000, absoluteMs: 1_800_000, approvalMs: 120_000, toolMs: 60_000, gatewayMs: 210_000 } as const;
 
 // Approval waits pause inference time, but never extend the absolute ceiling.
 /** Per-run limits; rule agent runs set their own, chat uses `runLimits`. */

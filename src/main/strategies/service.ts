@@ -163,7 +163,11 @@ export function createStrategies(database:Database,options:{active:(run:string)=
     const messages=(await tx.query<{data:TakeMessage}>('SELECT data FROM take_messages WHERE take_id=$1 ORDER BY sequence',[id])).rows.map(r=>r.data);
     const head=(await tx.query<{head_id:string|null}>('SELECT head_id FROM takes WHERE id=$1',[id])).rows[0].head_id;
     const basket=await view(tx,t);
-    return {markers,revision:t.draft_revision_id,version:t.current_version_id,head,data:{targetTakeId:id,title:t.title,basket:basket?{...basket,proposals:[],versions:basket.versions.filter(v=>v.id===basket.currentVersion)}:null,messages:recentMessages(visibleMessages({headId:head,messages} as Parameters<typeof visibleMessages>[0]))}};
+    // Rule suggestions the member turned down, so the agent does not offer them again without a new reason.
+    const dismissed=t.strategy_id?(await tx.query<{proposalId:string;ruleName:string|null;note:string|null;dismissedAt:string;target:ProposalPayload['spec']['target']}>(`SELECT p.id AS "proposalId",coalesce(r.configuration->'rule'->>'ruleName',p.producer_identity->'rule'->>'ruleName') AS "ruleName",p.producer_identity->'rule'->>'note' AS note,to_json(d.dismissed_at)#>>'{}' AS "dismissedAt",p.payload->'spec'->'target' AS target
+     FROM strategy_suggestion_dismissals d JOIN strategy_proposals p ON p.id=d.proposal_id LEFT JOIN take_runs r ON r.id=p.source_run_id WHERE p.strategy_id=$1 ORDER BY d.dismissed_at DESC LIMIT 10`,[t.strategy_id])).rows:[];
+    const dismissedSuggestions=dismissed.map(({target,...d})=>({...d,weights:target.weights.map(w=>({venue:w.instrument.venue,symbol:w.instrument.symbol,percent:w.bps/100})),cashPercent:target.cashBps/100}));
+    return {markers,revision:t.draft_revision_id,version:t.current_version_id,head,data:{targetTakeId:id,title:t.title,basket:basket?{...basket,proposals:[],versions:basket.versions.filter(v=>v.id===basket.currentVersion)}:null,dismissedSuggestions,messages:recentMessages(visibleMessages({headId:head,messages} as Parameters<typeof visibleMessages>[0]))}};
    });
    await options.ensure(runId);
    const unchanged=await atomic(async tx=>{

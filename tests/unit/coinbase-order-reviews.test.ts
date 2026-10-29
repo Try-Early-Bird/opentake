@@ -940,8 +940,14 @@ test('lifecycle notices survive Robinhood projection, deduplicate and resolve af
  await syncCoinbaseLifecycleNotifications(f.db,f.clock());expect((await notices()).rows[0].resolved_at).not.toBeNull();
 });
 
+// Moves a fixture's clock forward to a set day of the next UTC month at 15:00, so a scenario's
+// calendar periods do not depend on the date the suite runs.
+const toNextMonth=async(f:{clock:()=>number;advance:(ms:number)=>void;db:PGlite},day:number)=>{const d=new Date(f.clock());f.advance(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,day,15)-f.clock());
+ // The account was synced at the fixture's start; it stays as fresh as when the move began.
+ const now=new Date(f.clock()).toISOString();await f.db.query('UPDATE coinbase_transaction_history SET checked_at=$1',[now]);await f.db.query('UPDATE coinbase_portfolio_observations SET observed_at=$1',[now]);};
 test('lifecycle calendar run takes priority over drift and a no-order completion does not consume the drift limit',async()=>{
  const f=await ordersFixture(false,true,'monthly'),service=createCoinbaseLifecycle(f.database,f.clock);
+ await toNextMonth(f,5); // 32 days on and the day after stay in one calendar month
  await commitLifecycleVersion(f,s=>({...s,rebalance:{...s.rebalance,driftBandPoints:5}}));
  let view=await service.view(f.takeId);view=await service.decide({takeId:f.takeId,evidence:view.evidence,action:'adopt'});
  await service.decide({takeId:f.takeId,evidence:view.evidence,action:'enable_drift'});
@@ -1899,4 +1905,30 @@ test('Coinbase activity names a take by its committed name, not the chat title i
  await f.db.query("INSERT INTO order_activity(id,venue,account_id,order_id,signature,payload) VALUES($1,'coinbase',$2,$3,'{}',$4)",[randomUUID(),f.account,randomUUID(),JSON.stringify({strategyId,takeTitle:prompt,observedAt:new Date(f.clock()).toISOString()})]);
  expect((await readActivityPage(f.db,f.account)).orderActivity?.map(o=>o.takeTitle)).toEqual(['Synthetic Take']);
  expect((await createOrderActivity(f.database).list(f.account)).map(o=>o.takeTitle)).toEqual(['Synthetic Take']);
+});
+
+test('an unsent drift retry does not hold back the next calendar run',async()=>{
+ const f=await ordersFixture(false,true,'monthly'),service=createCoinbaseLifecycle(f.database,f.clock);
+ await toNextMonth(f,5);
+ await commitLifecycleVersion(f,s=>({...s,rebalance:{...s.rebalance,driftBandPoints:5}}));
+ let view=await service.view(f.takeId);view=await service.decide({takeId:f.takeId,evidence:view.evidence,action:'adopt'});
+ await service.decide({takeId:f.takeId,evidence:view.evidence,action:'enable_drift'});
+ f.advance(32*86400000);
+ const observe=async()=>{const now=new Date(f.clock()).toISOString();await f.db.query('UPDATE coinbase_transaction_history SET checked_at=$1',[now]);await f.db.query('DELETE FROM coinbase_portfolio_observations');
+  await f.db.query('INSERT INTO coinbase_portfolio_observations(account_id,observed_at,data) VALUES($1,$2,$3)',[f.account,now,JSON.stringify({portfolio:{currency:'USD'},spotPositions:[{asset:'USDC',quantity:'1000',marketValue:'1000',currency:'USD'}]})]);};
+ await observe();
+ const {NoCoinbaseOrdersError}=await import('../../src/main/coinbase/order-reviews');const previews:{scheduledOn:string;trigger:string}[]=[];
+ const orders={...f.orders,preview:async(_input:unknown,_x:unknown,run:{scheduledOn:string;trigger:string})=>{previews.push({scheduledOn:run.scheduledOn,trigger:run.trigger});throw new NoCoinbaseOrdersError('Already at target');}};
+ const exec=createCoinbaseExecution(f.database,f.orders,{...f.deps,submit:async()=>{throw Error('No orders');},cancel:async()=>false},f.clock);
+ const make=()=>createCoinbaseScheduler(f.database,orders as never,exec,()=>true,f.clock);
+ await make().tick();await make().tick();
+ const pending=(await f.db.query<{scheduled_on:string}>("SELECT scheduled_on::text FROM coinbase_rebalance_runs WHERE trigger='drift' AND state='pending'")).rows;
+ expect(pending).toHaveLength(1);
+ // The next month's calendar run falls due while the drift retry is still open.
+ await toNextMonth(f,1);await observe();
+ await make().tick();
+ const today=new Date(f.clock()).toISOString().slice(0,10);
+ expect(previews.at(-1)).toEqual({scheduledOn:today,trigger:'schedule'});
+ expect((await f.db.query("SELECT state FROM coinbase_rebalance_runs WHERE trigger='drift' AND scheduled_on=$1",[pending[0].scheduled_on])).rows).toEqual([{state:'completed'}]);
+ expect((await f.db.query("SELECT state FROM coinbase_rebalance_runs WHERE trigger='schedule' AND scheduled_on=$1",[today])).rows).toEqual([{state:'completed'}]);
 });

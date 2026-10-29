@@ -59,7 +59,7 @@ require('node:readline').createInterface({input:process.stdin}).on('line',line=>
   emit({id:e.id,result:{turn:{id:'turn'}}});if(mode==='hang')return;
   if(mode==='malformed'){console.log('{bad');return;}if(mode==='exit'){process.exit(0);return;}
   if(mode==='native'){emit({id:987,method:'item/commandExecution/requestApproval',params:{}});return;}
-  if(mode==='limit'){for(let i=0;i<20;i++)emit({method:'thread/tokenUsage/updated',params:{threadId:'thread',tokenUsage:{total:{totalTokens:i+1}}}});return;}
+  if(mode==='limit'){for(let i=0;i<100;i++)emit({method:'thread/tokenUsage/updated',params:{threadId:'thread',tokenUsage:{total:{totalTokens:i+1}}}});return;}
   emit({id:987,method:'item/tool/call',params:{threadId:'thread',turnId:'turn',callId:'call',tool:'opentake_marker',arguments:{}}});
  }
 });`;
@@ -68,7 +68,7 @@ for(const mode of ['success','malformed','exit','native','hang','limit'])test('C
  const controller=new AbortController(),result=input('chatgpt',controller.signal);let timer:ReturnType<typeof setTimeout>|undefined;
  const execute=codexExecutor(store,root,{command:()=>({executable:process.execPath,args:[script]}),version:async()=>({version:'0.144.3',verified:true}),gatewayCall:async (_host,method)=> (method==='gateway:list'?[{name:'marker',description:'Synthetic',inputSchema:{type:'object'}}]:method==='gateway:instructions'?'Synthetic guidance':{content:[{type:'text',text:'Synthetic tool result'}]}) as never,launch:((_e,args,options)=>{if(mode==='hang')timer=setTimeout(()=>controller.abort(),100);expect(JSON.stringify(args)).not.toContain(token);return spawn(process.execPath,[script,mode],options);}) as typeof spawn});
  try{if(mode==='success'){await execute(result.run);expect(result.text).toEqual(['Reply [redacted] [redacted]']);expect(result.replay).toHaveLength(3);expect(result.tools.at(-1)?.state).toBe('completed');expect(JSON.stringify(result.audit)).not.toContain(token);}
-  else await expect(execute(result.run)).rejects.toThrow(mode==='hang'?'stopped':mode==='exit'?'exited':mode==='limit'?'20 model-turn limit':'unsupported chat protocol');
+  else await expect(execute(result.run)).rejects.toThrow(mode==='hang'?'stopped':mode==='exit'?'exited':mode==='limit'?'100 model-turn limit':'unsupported chat protocol');
   expect(await readdir(join(root,'chat-temporary'))).toEqual([]);
  }finally{clearTimeout(timer);await rm(root,{recursive:true,force:true});}
 });
@@ -88,6 +88,24 @@ const server=http.createServer(async(req,res)=>{
  if(process.env.OPENTAKE_TEST_MODE==='malformed'){events.write('data: {broken\n\n');return;}
  if(process.env.OPENTAKE_TEST_MODE==='native'){events.write('data: '+JSON.stringify({type:'message.part.updated',properties:{part:{id:'bad',sessionID:session,type:'tool',tool:'bash',callID:'bad',state:{status:'running',input:{}}}}})+'\n\n');return;}
  if(process.env.OPENTAKE_TEST_MODE==='noimport'&&!raw.includes('earlier_conversation')){res.writeHead(500).end();return;}
+ if(process.env.OPENTAKE_TEST_MODE==='subagent'){
+  const send=(type,properties)=>events.write('data: '+JSON.stringify({type,properties})+'\n\n'),child='ses_child',stranger='ses_other';
+  const parts=[
+   {id:'task',sessionID:session,type:'tool',tool:'task',callID:'task-1',state:{status:'running',input:{subagent_type:'researcher'},metadata:{sessionId:child}}},
+   {id:'c-step',sessionID:child,type:'step-start'},
+   {id:'c-text',sessionID:child,type:'text',text:'Child notes',time:{start:1,end:2}},
+   {id:'c-read',sessionID:child,type:'tool',tool:'opentake_robinhood_get_quotes',callID:'read-1',state:{status:'completed',input:{},output:'NVDA 100'}},
+   {id:'c-bash',sessionID:child,type:'tool',tool:'bash',callID:'bash-1',state:{status:'error',input:{},error:'unavailable tool'}},
+   {id:'c-usage',sessionID:child,type:'step-finish',tokens:{input:5,output:1,cache:{read:0,write:0}},cost:0.002,reason:'stop'},
+   {id:'x-text',sessionID:stranger,type:'text',text:'Not ours',time:{start:1,end:2}},
+   {id:'task',sessionID:session,type:'tool',tool:'task',callID:'task-1',state:{status:'completed',input:{},output:'<task_result>Child notes</task_result>',metadata:{sessionId:child}}},
+   {id:'part',sessionID:session,type:'text',text:'Lead answer',time:{start:1,end:2}},
+   {id:'usage-step',sessionID:session,type:'step-finish',tokens:{input:10,output:2,cache:{read:0,write:0}},cost:0.01,reason:'stop'}];
+  send('session.created',{info:{id:child,parentID:session}});
+  for(const part of parts)send('message.part.updated',{part});
+  // As with the real server, the child's events stream before the lead's message returns.
+  setTimeout(()=>res.end(JSON.stringify({info:{role:'assistant',finish:'stop'},parts:parts.filter((p,i)=>p.sessionID===session&&!parts.slice(i+1).some(q=>q.id===p.id))})),100);return;
+ }
  const part={id:'part',sessionID:session,type:'text',text:'Reply '+process.env.OPENTAKE_ZEN_KEY,time:{start:1,end:2}};
  events?.write('data: '+JSON.stringify({type:'message.part.updated',properties:{part}})+'\n\n');
  const usage={id:'usage-step',sessionID:session,type:'step-finish',tokens:{input:10,output:2,cache:{read:0,write:0}},cost:0.01,reason:'stop'};
@@ -105,6 +123,31 @@ for(const mode of ['success','noimport','hang','malformed','native'])test('OpenC
  else await expect(execute(result.run)).rejects.toThrow(mode==='hang'?'stopped':'unsupported chat protocol');
  expect(await readdir(join(root,'chat-temporary'))).toEqual([]);}
  finally{clearTimeout(timer);await rm(root,{recursive:true,force:true});}
+});
+
+test('OpenCode offers only the researcher subagent, keeps its text out of the reply, and counts its steps, cost and Opentake calls',async()=>{
+ const root=await mkdtemp(join(tmpdir(),'native-open-sub-')),script=join(root,'fixture.cjs');await writeFile(script,openFixture);
+ const result=input('opencode');result.run.subagents=true;
+ const execute=opencodeExecutor(async()=>token,root,'/synthetic/bridge',{command:()=>({executable:process.execPath,args:[script]}),version:async()=>({version:'1.14.25',verified:true}),launch:((_e,args,options)=>{
+  const config=JSON.parse(options.env.OPENCODE_CONFIG_CONTENT);
+  expect(config.agent.opentake.permission).toEqual({'*':'deny','opentake_*':'allow',task:{'*':'deny',researcher:'allow'}});
+  expect(config.agent.researcher).toMatchObject({mode:'subagent',permission:{'*':'deny','opentake_*':'allow',opentake_opentake_propose_strategy:'deny',opentake_opentake_propose_rules:'deny',opentake_opentake_request_trade:'deny',opentake_opentake_request_tool_access:'deny',opentake_opentake_report_assessment:'deny'}});
+  expect(config.agent.researcher.permission.task).toBeUndefined();expect(config.agent.general).toEqual({disable:true});expect(config.agent.explore).toEqual({disable:true});
+  return spawn(process.execPath,args,{...options,env:{...options.env,OPENTAKE_TEST_MODE:'subagent'}});
+ }) as typeof spawn});
+ try{
+  await execute(result.run);
+  expect(result.text.join('')).toBe('Lead answer');
+  expect((result.tools as {name:string;state:string}[]).map(t=>`${t.name}:${t.state}`)).toEqual(['task:running','robinhood_get_quotes:completed','task:completed']);
+  expect(result.audit.filter((e:any)=>e.kind==='usage.recorded').map((e:any)=>e.payload.stepId)).toEqual(['c-usage','usage-step']);
+  expect(JSON.stringify(result.replay)).not.toContain('task');expect(JSON.stringify(result.replay)).not.toContain('Child notes');
+ }finally{await rm(root,{recursive:true,force:true});}
+});
+
+test('OpenCode leaves subagents off unless allowed, and never for local models',async()=>{
+ const {opencodeChatConfig}=await import('../../../src/main/opencode-chat');
+ const off=opencodeChatConfig('x','bridge','run',1) as {agent:Record<string,any>};
+ expect(off.agent.opentake.permission.task).toBeUndefined();expect(off.agent.researcher).toBeUndefined();expect(off.agent.general).toEqual({disable:true});
 });
 
 test('streaming redacts secrets split across deltas and keeps safe partial output',()=>{
