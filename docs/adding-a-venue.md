@@ -149,7 +149,10 @@ interface ActionAdapter<Input, State> {
   asks for approval), and a crash can leave side effects whose outcome was never
   saved. So `cancel` must be safe to call on any job after `recover`, release
   what is reserved, keep what filled, and report the outcome; the core never
-  writes a terminal state over a job that has adapter evidence.
+  writes a terminal state over a job that has adapter evidence. Do not rely on
+  `attempts` or `adapter_state` to tell whether your adapter has run: `attempts`
+  counts errors, and `adapter_state` is optional. Your own durable records are
+  the evidence, and `recover` must read them.
 - **Before sending an order, record durably that it is being sent** (as Coinbase
   does with `coinbase_order_dispatches.state='sending'`), using a client order id
   the broker can be queried by. After a crash or a lost response, look the order up
