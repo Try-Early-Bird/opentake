@@ -6,7 +6,8 @@ const tag = process.env.RELEASE_TAG;
 const info = validateVersion(JSON.parse(await readFile('package.json')), JSON.parse(await readFile('package-lock.json')), tag);
 const description = releaseDescription(process.env.RELEASE_PLATFORMS || 'all');
 const repo = process.env.GH_REPO;
-if (repo !== 'Try-Early-Bird/opentake') throw new Error('Unexpected release repository');
+// The organization was renamed from Try-Early-Bird; drafts go to the repository at its current name.
+if (repo !== 'joinearlybird/opentake') throw new Error('Unexpected release repository');
 const headers = { Authorization: `Bearer ${process.env.GH_TOKEN}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' };
 const endpoint = `https://api.github.com/repos/${repo}/releases`;
 const existing = await fetch(`${endpoint}/tags/${encodeURIComponent(tag)}`, { headers });
