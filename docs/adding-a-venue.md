@@ -127,14 +127,23 @@ interface ActionAdapter<Input, State> {
 - **The core does not authorise the trade.** It looks the adapter up and calls
   `advance`; it does not re-check that the rule is still granted, not disabled,
   not expired, that trading is still enabled, or that an approval is present and
-  unchanged. **Until the authorisation gate lands in the core, every adapter must
-  re-check all of these itself at dispatch time, from the database, never from a
-  saved result.** Coinbase does this by re-joining `strategy_rule_accepted`
-  (`strategies/rule-trades.ts`) and refusing on stale inputs; Robinhood does it
-  in `guard` and `withinApproved` (`strategies/robinhood-rule-trades.ts`), which
-  also bounds re-sized orders against what the member approved. Write refusal
-  tests for a revoked grant, a disabled rule, an expired request, trading turned
-  off, and an approval whose orders changed.
+  unchanged. **Until the core supplies that check, every adapter must re-check
+  all of these itself at dispatch time, from the database, never from a saved
+  result, and must do it against the final orders** (after any re-pricing or
+  re-sizing), not against the preview. The place for it is `journal.claim()` in
+  `dispatchOrder` (`trading/dispatch.ts`), which runs once, immediately before
+  the send, and whose failure never sends. Coinbase re-joins
+  `strategy_rule_accepted` (`strategies/rule-trades.ts`) and refuses on stale
+  inputs; Robinhood does it in `guard` and `withinApproved`
+  (`strategies/robinhood-rule-trades.ts`), which also bounds re-sized orders
+  against what the member approved. Write refusal tests for a revoked grant, a
+  disabled rule, an expired request, trading turned off, and an approval whose
+  orders changed.
+- **Revocation stops new sends, nothing else.** If the grant is removed or
+  trading is turned off while an order is already out, the adapter must keep
+  following fills, recovering by client id, resolving reservations and honouring
+  `cancel`. Only a *new* send is refused. Test this with a revocation after a
+  lost submit response: the job recovers, resolves, and sends nothing new.
 - **Before sending an order, record durably that it is being sent** (as Coinbase
   does with `coinbase_order_dispatches.state='sending'`), using a client order id
   the broker can be queried by. After a crash or a lost response, look the order up
@@ -178,9 +187,22 @@ Coinbase harness in `tests/unit/coinbase-order-reviews.test.ts` and the Robinhoo
 **Passing conformance is not readiness.** The suite proves dispatch, recovery
 and cancellation; it does not test trading authorisation. The venue is ready to
 trade when it passes conformance **and** its own refusal tests from §3 (revoked
-grant, disabled rule, expired request, trading disabled, changed approval),
-**and** the admission paths in §1 accept its accounts, **and** a member has
-connected an account and the venue's reads appear in the portfolio.
+grant, disabled rule, expired request, trading disabled, changed approval,
+revocation after a lost submit), **and** the admission paths in §1 accept its
+accounts, **and** a member has connected an account and the venue's reads appear
+in the portfolio, **and** the member controls below are honoured.
+
+### Member controls every venue must honour
+
+Opentake is self-hosted; these are the member's levers over their own
+automation, and each needs a test on the new venue:
+
+| Control | Required behaviour |
+|---|---|
+| Read-only by default | A new connection cannot trade until the member enables it (Coinbase: key permissions → `can_trade`; Robinhood: `agentic_allowed`; a signer venue: no trading until the member turns it on for that connection) |
+| Limits | `OPENTAKE_TRADING`, `confirm_trades`, per-rule approval, per-rule `maxTradeNotionalUsd`, per-account daily notional, and a signer's scope cap are checked immediately before every send, never from a saved result |
+| Pause | Trading off, rule disabled, Take in `ask` mode or grant removed → no new sends; in-flight orders finish, reservations resolve, the member is notified. Never a silent stall |
+| Revoke / disconnect | Disconnect refuses while any dispatch row is `sending`; a signer venue revokes the agent or session key at the venue before deleting the local secret; a wallet key is kept until the member has recovered or swept it |
 
 ## 5. Scheduling
 
