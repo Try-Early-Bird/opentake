@@ -51,7 +51,10 @@ None of these raise an error. Check each when adding a venue.
     trade" check (Coinbase `can_trade`, Robinhood `agentic_allowed`) and the
     per-venue buying-power read;
   - `src/main/strategies/rule-action-policy.ts`: the "live" check that labels
-    a rule `trading` or `preview_only` for agents counts only Coinbase routes.
+    a rule `trading` or `preview_only` for agents mirrors each engine's own
+    condition (a Coinbase route; a Robinhood account holding the active
+    allocation). Add the new venue's condition there, and to the agent note in
+    `rule-proposals.ts`.
 - **Calendar.** Teach `tradingSessionPolicy` in `src/main/trading/session-policy.ts`
   which asset classes the venue trades and when. Unknown combinations throw; they
   never default to open.
