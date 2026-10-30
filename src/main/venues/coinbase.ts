@@ -48,7 +48,7 @@ export function coinbaseRebalanceAdapter(trades:RuleTradeStep,kind:'rebalance_to
  };
 }
 
-export function coinbaseVenue(trades:RuleTradeStep):VenueModule{
+export function coinbaseVenue(trades:RuleTradeStep,slots:Pick<VenueModule,'queue'|'approvals'>={}):VenueModule{
  // Deploy cash and reduce run through the same rule-trade worker.
- return {profile:coinbaseProfile,adapters:{rebalance_to_target:coinbaseRebalanceAdapter(trades),deploy_cash:coinbaseRebalanceAdapter(trades,'deploy_cash'),reduce:coinbaseRebalanceAdapter(trades,'reduce')}};
+ return {...slots,profile:coinbaseProfile,adapters:{rebalance_to_target:coinbaseRebalanceAdapter(trades),deploy_cash:coinbaseRebalanceAdapter(trades,'deploy_cash'),reduce:coinbaseRebalanceAdapter(trades,'reduce')}};
 }

@@ -61,8 +61,28 @@ export interface TakeLedger{
  holdings(takeId:string,accountId:string):Promise<{asset:string;quantity:string}[]>;
 }
 
+/** A trade waiting for the member's approval, the same shape on every venue. */
+export interface PendingTrade{
+ requestId:string;ruleName:string|null;kind:string;amount:string|null;createdAt:string;
+ orders:{side:'buy'|'sell';symbol:string;amountUsd:string|null}[];
+ /** The orders are sized again when placed. */
+ estimated?:boolean;
+}
+
+/** Turns accepted rule firings on this venue's accounts into action jobs. Idempotent. */
+export interface VenueRuleQueue{enqueue():Promise<unknown>}
+
+/** Trades waiting for the member, and the member's approval. Placing the orders
+ *  stays the venue's; declining is the core's cancel of the action job. */
+export interface VenueApprovals{
+ pending(takeId:string):Promise<PendingTrade[]>;
+ approve(requestId:string):Promise<void>;
+}
+
 export interface VenueModule{
  profile:VenueProfile;
  adapters:Partial<Record<ActionKind,ActionAdapter<any,any>>>;
+ queue?:VenueRuleQueue;
+ approvals?:VenueApprovals;
  ledger?:TakeLedger;
 }

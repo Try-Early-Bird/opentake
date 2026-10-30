@@ -5,6 +5,7 @@ import {useEffect,useRef,useState} from 'react';
 import {ArrowUpRight} from 'lucide-react';
 import {StatusDot} from '../components/chat/StatusDot';
 import type {RuleProposal,RuleReview,RuleTradeApproval} from '../../../shared/rule-proposals';
+import {investmentVenues} from '../../../shared/investment-venues';
 import {RulesDialog,ago,changedRules,isOff,rulesChanged,whenText,type RulesMode} from './RulesWindow';
 import type {StrategyRule} from '../../../shared/strategy-rules';
 const errorText=(error:unknown)=>error instanceof Error?error.message:'Could not load Take rules.';
@@ -60,8 +61,8 @@ function TradeApprovals({takeId,readOnly}:{takeId:string;readOnly:boolean}){
  const what=(a:RuleTradeApproval)=>a.kind==='reduce'?`reduce by ${money(a.amount)}`:a.kind==='deploy_cash'?`invest ${money(a.amount)} of the Take’s cash`:'rebalance';
  return <div aria-label="Trades waiting for approval">{items.map(a=><div key={a.requestId} role="region" aria-label="Trade approval" className="border-t border-border py-3">
   <p className="flex items-center gap-2 font-medium"><span className="size-2 shrink-0 rounded-full bg-attention" aria-hidden="true"/>Rule “{a.ruleName??'Rule'}” wants to {what(a)}</p>
-  <p className="mt-0.5 pl-4 text-xs text-muted-foreground">{a.venue==='coinbase'?'Coinbase':'Robinhood'} · {a.orders.map(o=>`${o.side==='buy'?'Buy':'Sell'} ${o.symbol}${o.amountUsd?` ${money(o.amountUsd)}`:''}`).join(', ')}</p>
-  {a.venue==='robinhood'&&<p className="mt-0.5 pl-4 text-[11px] text-muted-foreground">Estimated; the orders are sized again when placed.</p>}
+  <p className="mt-0.5 pl-4 text-xs text-muted-foreground">{investmentVenues[a.venue as keyof typeof investmentVenues]?.label??a.venue} · {a.orders.map(o=>`${o.side==='buy'?'Buy':'Sell'} ${o.symbol}${o.amountUsd?` ${money(o.amountUsd)}`:''}`).join(', ')}</p>
+  {a.estimated&&<p className="mt-0.5 pl-4 text-[11px] text-muted-foreground">Estimated; the orders are sized again when placed.</p>}
   <div className="mt-2 flex gap-2 pl-4"><button type="button" disabled={readOnly||!!busy} onClick={()=>void decide(a.requestId,true)} className="rounded-full bg-foreground px-3.5 py-1.5 text-xs font-medium text-background disabled:opacity-40">{busy===a.requestId?'Saving…':'Approve'}</button>
    <button type="button" disabled={readOnly||!!busy} onClick={()=>void decide(a.requestId,false)} className="px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground disabled:opacity-40">Decline</button></div>
  </div>)}{error&&<p role="alert" className="pb-2 text-xs text-destructive">{error}</p>}</div>;

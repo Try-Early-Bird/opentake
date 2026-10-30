@@ -15,7 +15,7 @@ import {createActionJobs} from '../../src/main/execution/action-jobs';
 import {createVenueRegistry} from '../../src/main/venues/registry';
 import {robinhoodVenueWith} from '../../src/main/venues/robinhood';
 import {createRobinhoodRuleTrades} from '../../src/main/strategies/robinhood-rule-trades';
-import {createRuleTradeApprovals} from '../../src/main/strategies/rule-trade-approvals';
+import {createRuleTradeApprovals,robinhoodRuleApprovals} from '../../src/main/strategies/rule-trade-approvals';
 import {dataSourceThresholdPreset} from '../../src/shared/strategy-rules';
 const dbs:PGlite[]=[];afterEach(async()=>{await Promise.all(dbs.splice(0).map(d=>d.close()));});
 // Monday 2026-10-05: 11:00 Eastern is inside the regular session, 18:00 is not.
@@ -58,8 +58,9 @@ export async function fixture(options:{approval?:'ask'|'within_existing_policy';
   const instructions=createAllocationInstructions(database,{core:createAllocationCore(database,clock),planner,executor,clock} as never);
   const trades=createRobinhoodRuleTrades(database,{previewRebalance:(id,options)=>planner.previewAllocation(id,'manual',options),previewReduce:(id,amount)=>instructions.redemptionPreview(id,amount),
    rebalance:(id,options)=>instructions.plan(id,true,options),reduce:(id,amount,op)=>instructions.redeem(id,amount,op,true),tradingEnabled:()=>true,snapshot:async()=>snapshot() as never},clock);
-  const jobs=createActionJobs(database as never,createVenueRegistry([robinhoodVenueWith(trades.adapters)]),{clock});
-  const approvals=createRuleTradeApprovals(database,{robinhood:trades,submitCoinbase:async()=>{},cancel:async requestId=>{const job=(await db.query<{id:string}>("SELECT id FROM action_jobs WHERE idempotency_key='rule:'||$1::text",[requestId])).rows[0];await jobs.cancel(job.id);},nudge:()=>jobs.nudge()});
+  const venues=createVenueRegistry([robinhoodVenueWith(trades.adapters,{queue:trades,approvals:robinhoodRuleApprovals(trades)})]);
+  const jobs=createActionJobs(database as never,venues,{clock});
+  const approvals=createRuleTradeApprovals(venues,{cancel:async requestId=>{const job=(await db.query<{id:string}>("SELECT id FROM action_jobs WHERE idempotency_key='rule:'||$1::text",[requestId])).rows[0];await jobs.cancel(job.id);},nudge:()=>jobs.nudge()});
   // Jobs are stamped with the database's clock; this test runs on its own synthetic clock.
   return {trades,jobs,approvals,instructions,executor,tick:async()=>{await trades.enqueue();await db.query('UPDATE action_jobs SET next_run_at=$1 WHERE state IN (\'queued\',\'running\',\'waiting\')',[new Date(now).toISOString()]);await jobs.tick();}};
  };
