@@ -34,11 +34,8 @@ None of these raise an error. Check each when adding a venue.
 
 - **Migration.** Append one migration that inserts the venue id:
   `INSERT INTO venues(id) VALUES ('kraken');`. Ids are lowercase,
-  `^[a-z][a-z0-9_]{1,31}$`. Widen the three remaining
-  `CHECK (venue IN ('coinbase','robinhood'))` constraints in the same migration:
-  `strategy_account_routes` (`strategies/account-plan-migration.ts`),
-  `order_activity` (`trading/activity-migration.ts`) and
-  `mixed_take_execution_legs` (`mixed-execution/execution-migration.ts`).
+  `^[a-z][a-z0-9_]{1,31}$`. Every table with a venue column references
+  `venues(id)` (since migration 118), so there is no constraint to widen.
   Decide whether the venue allows several connections per member; today the
   `one_legacy_venue_connection` index (`coinbase/migration.ts`) limits every
   venue except Coinbase to one. Never edit an applied migration; append its

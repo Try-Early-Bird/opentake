@@ -583,5 +583,10 @@
     "version": 117,
     "name": "Action job started marker",
     "checksum": "41e41ac0b0cb8d4de609742e0336b236b55d651a16cfd8beeff583f36cd24305"
+  },
+  {
+    "version": 118,
+    "name": "Venue tables reference venues",
+    "checksum": "cec3bbee00bd35918cc17c8bc7d10e1782de45d6aa8ca107d6f464b6fb010554"
   }
 ]
