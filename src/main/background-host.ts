@@ -90,7 +90,7 @@ import {summarizeInvestment} from './execution/investment-summary';
 import {createToolAccess,ToolAccessError} from './tool-access';
 import {createRuleTargetSuggestions} from './strategies/rule-target-suggestions';
 import {createRobinhoodRuleTrades} from './strategies/robinhood-rule-trades';
-import {createRuleTradeApprovals} from './strategies/rule-trade-approvals';
+import {coinbaseRuleApprovals,createRuleTradeApprovals,robinhoodRuleApprovals} from './strategies/rule-trade-approvals';
 import {createAllocationResume} from './allocations/resume';
 import {createAllocationInstructions, authorResult, InstructionNotFound} from './execution/instructions';
 import { createShareEventTracker } from './execution/share-event-repair';
@@ -298,9 +298,12 @@ export function bootBackgroundHost(profile: string, build: string) {
     rebalance:(id,options)=>allocationInstructions.plan(id,true,options),reduce:(id,amount,op)=>allocationInstructions.redeem(id,amount,op,true),tradingEnabled,
     notify:async({takeId,requestId,title,body,attention})=>{await notifications.record({kind:'rule_notification',context:{takeId},source:{type:'rule',id:requestId},eventKey:'robinhood_trade',
       tier:attention?'act_now':'know_today',requiresAction:attention,occurredAt:new Date().toISOString(),title,body});}});
-  const venues=createVenueRegistry([coinbaseVenue(ruleTrades),robinhoodVenueWith(robinhoodTrades.adapters)],{agent_run:ruleAgents.adapter});
-  // One approval flow for rule trades on both venues.
-  const ruleTradeApprovals=createRuleTradeApprovals(database,{robinhood:robinhoodTrades,submitCoinbase:id=>coinbaseExecution.submit(id),
+  const venues=createVenueRegistry([
+    coinbaseVenue(ruleTrades,{queue:ruleTrades,approvals:coinbaseRuleApprovals(database,id=>coinbaseExecution.submit(id))}),
+    robinhoodVenueWith(robinhoodTrades.adapters,{queue:robinhoodTrades,approvals:robinhoodRuleApprovals(robinhoodTrades)}),
+  ],{agent_run:ruleAgents.adapter});
+  // One approval flow for rule trades on every registered venue.
+  const ruleTradeApprovals=createRuleTradeApprovals(venues,{
     cancel:async requestId=>{const job=(await database.use(db=>db.query<{id:string}>("SELECT id FROM action_jobs WHERE idempotency_key='rule:'||$1::text",[requestId]))).rows[0];if(job)await actionJobs.cancel(job.id);else await ruleTrades.cancel(requestId);},
     nudge:()=>actionJobs.nudge()});
   const actionJobs=createActionJobs(database,venues,{accounts:accountQueues,wake:()=>executionLoops?.ruleTrades.wake(),
@@ -1040,7 +1043,7 @@ export function bootBackgroundHost(profile: string, build: string) {
     const tradingReady=()=>!notificationSuspended&&!settings.busy()&&!quitting&&tradingEnabled();
     executionLoops=createExecutionLoops({shareEvents,robinhoodScheduler:executionScheduler,coinbaseScheduler,mixedWithdrawals,mixedInvestments,
       // New firings become jobs, then every due action job advances one step.
-      ruleTrades:{tick:async signal=>{await ruleTrades.enqueue();await robinhoodTrades.enqueue();await ruleAgents.enqueue();await ruleTargets.pass();await actionJobs.tick(signal);}}},{
+      ruleTrades:{tick:async signal=>{for(const venue of venues.modules())await venue.queue?.enqueue();await ruleAgents.enqueue();await ruleTargets.pass();await actionJobs.tick(signal);}}},{
       ready:tradingReady,
       // Account queues replace the old execution check; investments and syncs still pause rule trades.
       ruleTradesReady:()=>!coinbaseInvestments.busy()&&!coinbasePortfolio.busy()&&!coinbase.busy(),

@@ -20,7 +20,7 @@ export interface RuleReview {lifecycle?:Record<string,RuleLifecycle>;tradingEnab
 /** One rule firing and what came of it, for the Rules window's Activity. */
 export interface RuleActivityItem {requestId:string;at:string;status:string;actionKind:string;job?:{kind:string;state:string;reason:string|null;waitingFor:string|null};trade?:{state:string;reason:string|null};runId?:string;fills:{side:string;product:string;quantity:string}[]}
 /** A rule or agent trade waiting for the member's approval, on any venue. */
-export interface RuleTradeApproval {requestId:string;venue:'coinbase'|'robinhood';ruleName:string|null;kind:string;amount:string|null;createdAt:string;orders:{side:'buy'|'sell';symbol:string;amountUsd:string|null}[]}
+export interface RuleTradeApproval {requestId:string;venue:string;ruleName:string|null;kind:string;amount:string|null;createdAt:string;orders:{side:'buy'|'sell';symbol:string;amountUsd:string|null}[];/** The orders are sized again when placed. */estimated?:boolean}
 export const ruleReviewRequest=z.discriminatedUnion('action',[
  z.object({action:z.literal('rule-review'),takeId:z.uuid()}).strict(),
  z.object({action:z.literal('rule-message-proposals'),messageId:z.uuid()}).strict(),

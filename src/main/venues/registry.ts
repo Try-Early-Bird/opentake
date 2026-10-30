@@ -34,6 +34,8 @@ export function createVenueRegistry(modules:readonly VenueModule[],local:Partial
  }
  return {
   list:()=>[...byId.values()].map(m=>m.profile),
+  /** Registered modules, in registration order. */
+  modules:()=>[...byId.values()],
   has:(venue:string)=>byId.has(venue),
   profile(venue:string):VenueProfile{const m=byId.get(venue);if(!m)throw new Error(`Unknown venue ${venue}`);return m.profile;},
   adapter(venue:string,kind:ActionKind):ActionAdapter|undefined{return byId.get(venue)?.adapters[kind];},

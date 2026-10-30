@@ -110,7 +110,7 @@ test('planner rounds down sizes, separates currencies, sells first and blocks re
 
 import {createAccountQueues} from '../../src/main/execution/account-queues';
 import {createActionJobs} from '../../src/main/execution/action-jobs';
-import {createVenueRegistry} from '../../src/main/venues/registry';
+import {coinbaseProfile,createVenueRegistry} from '../../src/main/venues/registry';
 import {coinbaseVenue} from '../../src/main/venues/coinbase';
 import {robinhoodVenue} from '../../src/main/venues/robinhood';
 import {actionAdapterConformance} from './execution/action-conformance';
@@ -1298,8 +1298,9 @@ const cancelRuleTrade=async(f:Awaited<ReturnType<typeof ruleTradeFixture>>)=>{
 };
 test('rule trading: a Coinbase trade waiting for approval appears on the shared card; approving there sends it once',async()=>{
  const f=await ruleTradeFixture(true);try{
-  const {createRuleTradeApprovals}=await import('../../src/main/strategies/rule-trade-approvals');
-  const approvals=createRuleTradeApprovals(f.database,{robinhood:{pending:async()=>[],decide:async()=>{}},submitCoinbase:id=>f.execution.submit(id),cancel:async()=>{},nudge:async()=>{}});
+  const {coinbaseRuleApprovals,createRuleTradeApprovals}=await import('../../src/main/strategies/rule-trade-approvals');
+  const venues=createVenueRegistry([{profile:coinbaseProfile,adapters:{},approvals:coinbaseRuleApprovals(f.database,id=>f.execution.submit(id))},robinhoodVenue]);
+  const approvals=createRuleTradeApprovals(venues,{cancel:async()=>{},nudge:async()=>{}});
   await f.worker.tick();expect(f.sent).toHaveLength(0);
   const waiting=await approvals.list(f.takeId);
   expect(waiting).toEqual([expect.objectContaining({requestId:f.request.id,venue:'coinbase',kind:'rebalance_to_target',orders:[expect.objectContaining({side:expect.any(String),symbol:expect.any(String)})]})]);
