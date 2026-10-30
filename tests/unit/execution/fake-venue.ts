@@ -5,9 +5,11 @@ import {PGlite} from '@electric-sql/pglite';
 import {migrate} from '../../../src/main/migrations';
 import {createActionJobs} from '../../../src/main/execution/action-jobs';
 import {createAccountQueues} from '../../../src/main/execution/account-queues';
+import {dispatchOrder,type SubmissionResult} from '../../../src/main/trading/dispatch';
+import {dispatchAuthorization,DispatchRefused,type DispatchAuthorization,type DispatchOrderIntent} from '../../../src/main/execution/dispatch-authorization';
 import {createVenueRegistry,coinbaseProfile} from '../../../src/main/venues/registry';
 import type {ActionAdapter,VenueModule,VenueProfile} from '../../../src/main/venues/types';
-import type {AdmissionHarness,ConformanceHarness,SubmitMode} from './action-conformance';
+import type {AdmissionHarness,ConformanceHarness,DispatchHarness,SubmitMode} from './action-conformance';
 import type {Admission} from '../../../src/main/execution/admission';
 
 type Order={clientRef:string;amount:number;filled:number;open:boolean};
@@ -34,10 +36,10 @@ export function fakeBroker(){
 }
 export type FakeBroker=ReturnType<typeof fakeBroker>;
 
-/** Durable outside the job row, as a venue's own reservation and dispatch tables are. */
+/** Durable outside the job row, as a venue's own reservation, approval and dispatch tables are. */
 export function fakeLedger(){
- const reserved=new Map<string,number>(),sending=new Set<string>();
- return {reserved,sending,
+ const reserved=new Map<string,number>(),sending=new Set<string>(),approved=new Map<string,DispatchOrderIntent[]>();
+ return {reserved,sending,approved,
   /** The process dies right after the next reservation is written, before any outcome is returned. */
   crashAfterReserve:false,
   reserve:(id:string,amount:number)=>{if(!reserved.has(id))reserved.set(id,amount);},
@@ -48,7 +50,8 @@ export type FakeLedger=ReturnType<typeof fakeLedger>;
 
 const input=z.object({amount:z.number().positive()}).strict();
 type State={phase?:'reserved'|'sent'};
-export function fakeBuyAdapter(broker:FakeBroker,ledger:FakeLedger):ActionAdapter<z.infer<typeof input>,State>{
+export const FAKE_SYMBOL='FAKE';
+export function fakeBuyAdapter(broker:FakeBroker,ledger:FakeLedger,authorize:DispatchAuthorization):ActionAdapter<z.infer<typeof input>,State>{
  return {
   kind:'buy',parse:raw=>input.parse(raw),
   async recover(job){
@@ -64,11 +67,25 @@ export function fakeBuyAdapter(broker:FakeBroker,ledger:FakeLedger):ActionAdapte
    }
    if(phase==='reserved'){
     if(ledger.sending.has(job.id))return broker.find(job.id)?{state:'running',adapterState:{phase:'sent'}}:{state:'needs_attention',reason:'order_uncertain'};
-    ledger.sending.add(job.id);
-    let answer:'accepted'|'rejected';
-    try{answer=await broker.submit(job.id,job.input.amount,signal);}
-    catch{return {state:'needs_attention',reason:'order_uncertain'};}
-    if(answer==='rejected'){ledger.sending.delete(job.id);ledger.release(job.id);return {state:'blocked',reason:'order_rejected'};}
+    // The final order, re-sized as a real venue would after a fresh quote.
+    const orders:DispatchOrderIntent[]=[{symbol:FAKE_SYMBOL,side:'buy',amountUsd:String(job.input.amount)}];
+    let result:SubmissionResult;
+    try{
+     result=await dispatchOrder({async send(beforeSend){
+      await beforeSend();
+      return (await broker.submit(job.id,job.input.amount,signal))==='accepted'?{state:'accepted',providerRef:job.id}:{state:'rejected'};
+     }},{
+      // The claim is where the core's dispatch check runs: a refusal here never sends.
+      async claim(){await authorize({job,orders,approved:ledger.approved.get(job.id)});ledger.sending.add(job.id);},
+      async record(){},
+      async unknown(){},
+     });
+    }catch(error){
+     if(error instanceof DispatchRefused){ledger.release(job.id);return {state:'blocked',reason:error.reason};}
+     throw error;
+    }
+    if(result.state==='unknown')return {state:'needs_attention',reason:'order_uncertain'};
+    if(result.state==='rejected'){ledger.sending.delete(job.id);ledger.release(job.id);return {state:'blocked',reason:'order_rejected'};}
     return {state:'running',adapterState:{phase:'sent'},retryInMs:0};
    }
    const order=broker.find(job.id);
@@ -86,7 +103,7 @@ export function fakeBuyAdapter(broker:FakeBroker,ledger:FakeLedger):ActionAdapte
 }
 export const fakeProfile:VenueProfile={...coinbaseProfile,id:'fake',label:'Fake'};
 
-export async function fakeHarness(options:{stepDeadlineMs?:number}={}):Promise<ConformanceHarness&AdmissionHarness&{db:PGlite;account:string;broker:FakeBroker;ledger:FakeLedger}>{
+export async function fakeHarness(options:{stepDeadlineMs?:number}={}):Promise<ConformanceHarness&AdmissionHarness&DispatchHarness&{db:PGlite;account:string;broker:FakeBroker;ledger:FakeLedger}>{
  const db=new PGlite();await migrate(db);
  // Adding a venue is one row; this is what an appended migration would insert.
  await db.query("INSERT INTO venues(id) VALUES('fake')");
@@ -94,19 +111,23 @@ export async function fakeHarness(options:{stepDeadlineMs?:number}={}):Promise<C
  const account=(await db.query<{id:string}>("INSERT INTO linked_accounts(connection_id,external_ref,masked_number) VALUES($1,'fake','F') RETURNING id",[connection])).rows[0].id;
  const database={use:<T>(work:(db:PGlite)=>Promise<T>)=>work(db)};
  const broker=fakeBroker(),ledger=fakeLedger();
- // The fake venue opts in to the core's admission; its permission is a switch the tests flip.
+ // The fake venue opts in to the core's admission and dispatch checks; its permission is a
+ // switch the tests flip, standing in for the grant the real check reads from the database.
  let admission:Admission={admitted:true};
+ const admit=async()=>admission;
  const build=()=>{
-  const module:VenueModule={profile:fakeProfile,admission:'core',adapters:{buy:fakeBuyAdapter(broker,ledger)}};
-  return createActionJobs(database as never,createVenueRegistry([module]),{accounts:createAccountQueues(),stepDeadlineMs:options.stepDeadlineMs??200,admit:async()=>admission});
+  const module:VenueModule={profile:fakeProfile,admission:'core',adapters:{buy:fakeBuyAdapter(broker,ledger,dispatchAuthorization(admit))}};
+  return createActionJobs(database as never,createVenueRegistry([module]),{accounts:createAccountQueues(),stepDeadlineMs:options.stepDeadlineMs??200,admit});
  };
  const harness={db,account,broker,ledger,jobs:build(),
   enqueue:(key?:string)=>harness.jobs.enqueue({kind:'buy',origin:'rule',originId:crypto.randomUUID(),idempotencyKey:key??crypto.randomUUID(),accountId:account,venue:'fake',input:{amount:10}}),
   reserved:async(job:{id:string})=>ledger.reserved.get(job.id)??0,
   restart:async()=>{harness.jobs=build();return harness.jobs;},
   revoke:()=>{admission={admitted:false,reason:'trading_not_granted'};},
+  disableTrading:()=>{admission={admitted:false,reason:'trading_disabled'};},
   restore:()=>{admission={admitted:true};},
   crashAfterReserve:()=>{ledger.crashAfterReserve=true;},
+  approve:(job:{id:string},amountUsd:string)=>{ledger.approved.set(job.id,[{symbol:FAKE_SYMBOL,side:'buy',amountUsd}]);},
   close:()=>db.close(),
  };
  // Repeated enqueues of one key share one origin.

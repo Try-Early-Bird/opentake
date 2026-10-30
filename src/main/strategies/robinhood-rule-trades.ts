@@ -10,6 +10,7 @@ import type {ActionAdapter,ActionOutcome} from '../venues/types';
 import type {PlanOptions} from '../execution/contracts';
 import {agentTradeEvidence,agentTradeSuspected} from './rule-trades';
 import {decimalToScaledInteger,scaledIntegerToDecimal} from '../allocations/decimal';
+import {APPROVAL_DRIFT_BPS,APPROVAL_DRIFT_FLOOR,withinApproved} from '../execution/dispatch-authorization';
 import {evaluateRule,initialRuleState} from './rule-evaluator';
 import type {StrategyRule} from '../../shared/strategy-rules';
 import type {TakeInputSnapshot} from '../../shared/take-inputs';
@@ -35,18 +36,9 @@ export interface RobinhoodRuleTradeDeps {
 type Row={request_id:string;take_id:string;account_id:string;allocation_id:string;kind:RobinhoodTradeKind;amount:string|null;state:string;preview:{orders:PreviewOrder[];at:string;approvalRequired?:boolean};transaction_id:string|null;reason:string|null};
 
 const APPROVAL_RECHECK_MS=15_000,MARKET_RECHECK_MS=15*60_000,FOLLOW_MS=5_000;
-/** A fresh plan may differ from the approved one by this much per order before the member is asked again. */
-const APPROVAL_DRIFT_BPS=1_000n,APPROVAL_DRIFT_FLOOR=decimalToScaledInteger('1');
 const totalUsd=(orders:PreviewOrder[])=>orders.reduce((sum,o)=>sum+decimalToScaledInteger(o.amountUsd!),0n);
-/** The fresh orders stay within what the member approved: no new symbol or side, no order much larger. */
-export function withinApproved(fresh:PreviewOrder[],approved:PreviewOrder[]):boolean{
- return fresh.every(o=>{
-  const was=approved.find(a=>a.symbol===o.symbol&&a.side===o.side);
-  if(!was||was.amountUsd===null||o.amountUsd===null)return false;
-  const before=decimalToScaledInteger(was.amountUsd),slack=before*APPROVAL_DRIFT_BPS/10_000n;
-  return decimalToScaledInteger(o.amountUsd)<=before+(slack>APPROVAL_DRIFT_FLOOR?slack:APPROVAL_DRIFT_FLOOR);
- });
-}
+// The approval tolerance is the core's (`execution/dispatch-authorization.ts`), the same on every venue.
+export {withinApproved};
 const deployOptions=(kind:RobinhoodTradeKind,amount:string|null):PlanOptions|undefined=>kind==='deploy_cash'?{buysOnly:true,cashCapUsd:amount!}:undefined;
 const OPEN=['queued','reviewed','submitting','submitted','partially_filled'],UNCERTAIN=['placement_unknown','reconciliation_required'];
 
