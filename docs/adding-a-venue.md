@@ -1,23 +1,67 @@
 # Adding a trading venue
 
-Strategy execution is venue-neutral at its core: worker loops,
-per-account queues, action jobs and capability answers talk to a venue registry,
-never to a named broker. This guide lists what a new platform needs. Coinbase
-(`src/main/venues/coinbase.ts`) is the working example.
+The **action-job core** is venue-neutral: worker loops, per-account queues,
+action jobs, rule queueing and the shared approval card talk to a venue
+registry, never to a named broker. **The rest of the app is not yet**: connecting
+an account, syncing it, pricing and valuing it, the Take ledger, rule policy,
+agent read tools and the renderer each still name Coinbase or Robinhood, and
+several of those branches are two-way (`coinbase ? … : robinhood`), so a third
+venue fails silently rather than at compile time. The redesign that closes this
+gap, slot by slot, is tracked in the local `plans/venue-connector-redesign.md`;
+this guide is updated as each slot lands.
+
+Coinbase (`src/main/venues/coinbase.ts`) is the working example of a venue module.
+Read this whole page before starting: the registration steps alone produce a
+venue whose accounts cannot be configured or authorised.
+
+## 0. Know what fails silently today
+
+Until the renderer and host registries exist, a venue that is only registered
+in the action core will:
+
+- show the **Coinbase logo** in seven renderer spots that choose
+  `venue==='robinhood' ? Robinhood : Coinbase`;
+- have its **agent reads routed to Robinhood** (`background-host.ts` treats
+  every platform that is not `coinbase` as Robinhood);
+- be **rejected by the account-plan schema** and filtered out of account plans
+  and trading grants (see §1);
+- return **no prices, no performance** (`market-price-reader.ts` answers
+  `unsupported`; `performance.ts` answers `null`).
+
+None of these raise an error. Check each when adding a venue.
 
 ## 1. Register the venue
 
 - **Migration.** Append one migration that inserts the venue id:
   `INSERT INTO venues(id) VALUES ('kraken');`. Ids are lowercase,
-  `^[a-z][a-z0-9_]{1,31}$`. If the venue appears in older tables that still use
-  `CHECK (venue IN ('coinbase','robinhood'))` (`mixed_take_execution_legs`, `strategy_account_routes`,
-  `order_activity`), widen those constraints in the same
-  migration. Never edit an applied migration; append its checksum to
-  `tests/fixtures/migration-checksums.json`.
-- **Display data.** Add the label and currencies to `src/shared/investment-venues.ts`.
+  `^[a-z][a-z0-9_]{1,31}$`. Widen the three remaining
+  `CHECK (venue IN ('coinbase','robinhood'))` constraints in the same migration:
+  `strategy_account_routes` (`strategies/account-plan-migration.ts`),
+  `order_activity` (`trading/activity-migration.ts`) and
+  `mixed_take_execution_legs` (`mixed-execution/execution-migration.ts`).
+  Decide whether the venue allows several connections per member; today the
+  `one_legacy_venue_connection` index (`coinbase/migration.ts`) limits every
+  venue except Coinbase to one. Never edit an applied migration; append its
+  checksum to `tests/fixtures/migration-checksums.json`.
+- **Admission paths.** Without these the venue's accounts cannot be put on a
+  Take or granted trading, however well the adapter works:
+  - `src/shared/strategy-account-plan.ts`: the `routes` venue enum and the
+    `.max(2)` route cap;
+  - `src/main/strategies/account-plans.ts`: the venue filter and the per-venue
+    "can this account trade" check (Coinbase `can_trade`, Robinhood
+    `agentic_allowed`);
+  - `src/main/strategies/rule-proposals.ts`: the venue filter when granting a
+    rule trading on an account;
+  - `src/main/strategies/rule-action-policy.ts`: the "live" check that decides
+    whether a rule reads as `trading` or `preview_only`.
 - **Calendar.** Teach `tradingSessionPolicy` in `src/main/trading/session-policy.ts`
   which asset classes the venue trades and when. Unknown combinations throw; they
   never default to open.
+- **Display data, last.** Adding a key to `src/shared/investment-venues.ts`
+  widens `InvestmentVenue`, which breaks the build at
+  `mixed-execution/adapters.ts` and `renderer/.../InvestmentVenuePanel.tsx` until
+  a mixed-execution adapter and an investment panel exist. Do this step after
+  those exist, not first.
 
 ## 2. Write the venue module
 
@@ -25,14 +69,44 @@ A `VenueModule` (`src/main/venues/types.ts`) has:
 
 - **Profile** (required): asset classes, order types, which asset classes accept
   fractional and quote-currency (notional) orders, quote currencies, calendar, and
-  per-call timeout and scheduler interval.
-- **Adapters** (one per supported action kind): `rebalance_to_target`, `buy`,
-  `trim`, `exit`, `deploy_cash`. A missing adapter is a capability answer
-  (`action_unsupported`), not an error.
-- **Ledger** (required to trade): the venue's Take ledger behind `TakeLedger`.
+  per-call timeout and scheduler interval. *Today only `id`, `label` and
+  `assetClasses` are read by the core (`actionCapability`). The other fields are
+  declared for the redesign and change nothing yet; the venue's own code must
+  still enforce them.*
+- **Adapters** (one per supported action kind): `rebalance_to_target`,
+  `deploy_cash`, `reduce`, and later `buy`, `trim`, `exit`. A missing adapter is
+  a capability answer (`action_unsupported`), not an error, **provided the
+  venue's `queue` has enqueued the job**: nothing is answered for a firing that
+  was never enqueued.
+- **Queue** (required to trade): `queue.enqueue()` turns accepted rule firings
+  on the venue's accounts into `action_jobs` rows with
+  `idempotency_key='rule:'||request_id`. The host tick calls every registered
+  venue's `queue` before advancing jobs. Without it, firings sit in `shadow`
+  until they expire.
+- **Approvals** (required when the member can be asked): `approvals.pending(takeId)`
+  lists trades waiting for the member as `PendingTrade`s;
+  `approvals.approve(requestId)` carries out the approval. Declining is the
+  core's cancel of the action job. The shared approval card lists every
+  registered venue's pending trades and routes each decision back to its venue;
+  set `estimated:true` when the orders are sized again at placement.
+- **Ledger**: `VenueModule.ledger` (`TakeLedger`) is **declared but not yet
+  consumed** by anything. Each venue currently keeps its own Take ledger
+  (Coinbase: `coinbase_allocations` and friends; Robinhood:
+  `strategy_allocations` / `strategy_attribution_entries`). A new venue needs
+  one of its own until the ledger slot lands.
 
-Register it in `src/main/background-host.ts`:
-`createVenueRegistry([coinbaseVenue(ruleTrades), robinhoodVenue, krakenVenue(...)])`.
+Register it in `src/main/background-host.ts`, which today reads:
+
+```ts
+const venues=createVenueRegistry([
+  coinbaseVenue(ruleTrades,{queue:ruleTrades,approvals:coinbaseRuleApprovals(database,id=>coinbaseExecution.submit(id))}),
+  robinhoodVenueWith(robinhoodTrades.adapters,{queue:robinhoodTrades,approvals:robinhoodRuleApprovals(robinhoodTrades)}),
+  // krakenVenue(krakenTrades,{queue:krakenTrades,approvals:krakenApprovals}),
+],{agent_run:ruleAgents.adapter});
+```
+
+The second argument holds `local` adapters for actions that run in the app
+rather than on a venue.
 
 ## 3. Implement an adapter
 
@@ -50,23 +124,41 @@ interface ActionAdapter<Input, State> {
   preview → confirm → submit → follow up), keeping progress in `adapterState`.
   The core calls it inside the account's queue, so nothing else moves money on that
   account meanwhile.
+- **The core does not authorise the trade.** It looks the adapter up and calls
+  `advance`; it does not re-check that the rule is still granted, not disabled,
+  not expired, that trading is still enabled, or that an approval is present and
+  unchanged. **Until the authorisation gate lands in the core, every adapter must
+  re-check all of these itself at dispatch time, from the database, never from a
+  saved result.** Coinbase does this by re-joining `strategy_rule_accepted`
+  (`strategies/rule-trades.ts`) and refusing on stale inputs; Robinhood does it
+  in `guard` and `withinApproved` (`strategies/robinhood-rule-trades.ts`), which
+  also bounds re-sized orders against what the member approved. Write refusal
+  tests for a revoked grant, a disabled rule, an expired request, trading turned
+  off, and an approval whose orders changed.
 - **Before sending an order, record durably that it is being sent** (as Coinbase
   does with `coinbase_order_dispatches.state='sending'`), using a client order id
   the broker can be queried by. After a crash or a lost response, look the order up
   by that id. **Never resend an order whose outcome is unknown**: return
   `needs_attention` (or `waiting` for `account` while it keeps being re-checked).
+  For an onchain venue the same rule applies to transactions: record sender,
+  nonce and hash before broadcasting; a dropped transaction may be re-signed
+  only with the same nonce, so at most one ever lands.
 - Return `running` with `retryInMs` to be called again, `waiting` with a reason to
   wait for approval, market open, funds, inputs or the account, or a terminal state
   (`succeeded`, `blocked`, `failed`, `needs_attention`, `cancelled`) with a
   snake_case reason. Throwing is retried with backoff and asks for attention after
   five errors.
+- A platform refusal (a venue that will not serve this member, a token that
+  rejects the transfer) is a normal outcome: return `blocked` with the
+  platform's reason. Opentake adds no jurisdiction logic of its own and never
+  retries a refusal as if it were transient.
 - `cancel` releases reservations and keeps fills. If orders are already out and
   cannot be cancelled now, return `running` or `waiting`; the job continues.
 - Honor `signal`: it aborts at the step deadline (2 minutes) and at shutdown.
 - Broker calls go through the venue's request queue (`createVenueQueue`), one at a
   time, with a per-call timeout.
 
-## 4. Pass the conformance suite
+## 4. Pass the conformance suite, and the authorisation tests
 
 Run `actionAdapterConformance` (`tests/unit/execution/action-conformance.ts`)
 against the adapter with a synthetic broker and database. It checks:
@@ -82,7 +174,13 @@ against the adapter with a synthetic broker and database. It checks:
 A case may be marked as covered by named tests in the adapter's own suite (see the
 Coinbase harness in `tests/unit/coinbase-order-reviews.test.ts` and the Robinhood one in
 `tests/unit/robinhood-rule-conformance.test.ts`), with the reason.
-The venue is ready when it passes.
+
+**Passing conformance is not readiness.** The suite proves dispatch, recovery
+and cancellation; it does not test trading authorisation. The venue is ready to
+trade when it passes conformance **and** its own refusal tests from §3 (revoked
+grant, disabled rule, expired request, trading disabled, changed approval),
+**and** the admission paths in §1 accept its accounts, **and** a member has
+connected an account and the venue's reads appear in the portfolio.
 
 ## 5. Scheduling
 
@@ -91,8 +189,25 @@ The venue is ready when it passes.
   channel), wake the loop from them and keep polling as the backup.
 - A scheduled or drift rebalancer for the venue runs as its own worker loop
   (`createWorkerLoop`) and holds each account through `AccountQueues.run`.
+- Background account sync is scheduled by `maintenance.ts`, which today only
+  schedules Robinhood; add the venue there until the sync slot lands.
 - Synthetic tests only: no live credentials, profiles or orders. A live check with
   real money is run by the member, with explicit approval of amount and asset.
+
+## 6. Everything the action core does not cover (yet)
+
+A venue that stops at §5 cannot be used. Each of these is per venue today and
+has its own slot in the redesign plan:
+
+| Area | Today | Where to look |
+|---|---|---|
+| Connect | Bespoke service per venue, a hand-written RPC block in `background-host.ts`, a `desktop.ts` channel entry, a preload bridge, rows in `Connections.tsx` / `ConnectMenu.tsx` | `connections.ts` (Robinhood), `coinbase/connections.ts` |
+| Signing | Venues where Opentake holds a key (agent wallet, dedicated EOA, session key) have no seam yet; keys live in `SecretStore`, main process only, never exported to the renderer or agents | `secret-store.ts` |
+| Sync | `account-sync/service.ts` is Robinhood MCP only; Coinbase has parallel tables; `platform-portfolios.ts` merges exactly two venues | `account-sync/`, `coinbase/portfolio.ts` |
+| Prices and performance | Price reader and performance branch on venue and answer `unsupported` / `null` otherwise; quote tables are keyed by bare ticker | `data-sources/market-price-reader.ts`, `strategies/performance.ts` |
+| Agent read tools | Per-venue tool list with contract hashes, a chat scope, and the platform enum in the MCP catalog | `coinbase/read-tools.ts`, `opentake-mcp/catalog.ts` |
+| Renderer | Logo, investment panel, market route, and the two-way venue ternaries | `renderer/src/logos.tsx`, `InvestmentVenuePanel.tsx` |
+| Mixed baskets | Exactly two venues (`mixed-execution/version.ts`, `funding.ts`, `withdrawal-adapters.ts`); a new venue ships single-venue first | `mixed-execution/` |
 
 ## A second example: Robinhood
 
@@ -101,5 +216,7 @@ places orders (the Robinhood planner and executor). Such an adapter does not sub
 itself: it previews (a dry run), stores the preview for the member's approval, hands the
 approved work to the engine with the approval carried through, and follows the engine's
 order records to a terminal state. Never-resend and recovery then stay the engine's, tested
-there. Waiting trades join the shared approvals (`rule-trade-approvals.ts`), so a new venue
-appears on the same approval card by adding its pending list and decide step.
+there. Its `queue` is its own `enqueue`, and its `approvals` slot
+(`robinhoodRuleApprovals` in `strategies/rule-trade-approvals.ts`) wraps its
+`pending` and `decide`, so it appears on the shared approval card without that
+card knowing its name.
