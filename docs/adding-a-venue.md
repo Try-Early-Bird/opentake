@@ -44,16 +44,17 @@ None of these raise an error. Check each when adding a venue.
   venue except Coinbase to one. Never edit an applied migration; append its
   checksum to `tests/fixtures/migration-checksums.json`.
 - **Admission paths.** Without these the venue's accounts cannot be put on a
-  Take or granted trading, however well the adapter works:
-  - `src/shared/strategy-account-plan.ts`: the `routes` venue enum and the
-    `.max(2)` route cap;
-  - `src/main/strategies/account-plans.ts`: the venue filter and the per-venue
-    "can this account trade" check (Coinbase `can_trade`, Robinhood
-    `agentic_allowed`);
-  - `src/main/strategies/rule-proposals.ts`: the venue filter when granting a
-    rule trading on an account;
-  - `src/main/strategies/rule-action-policy.ts`: the "live" check that decides
-    whether a rule reads as `trading` or `preview_only`.
+  Take or granted trading, however well the adapter works. The venue filters
+  in account plans, rule granting, notifications and the data-source inventory,
+  plus the account-plan route enum and cap, all read one list,
+  `investmentVenueIds` in `src/shared/investment-venues.ts`, so they widen
+  when the venue is added there (see "Display data, last" below). Still
+  per venue:
+  - `src/main/strategies/account-plans.ts`: the per-venue "can this account
+    trade" check (Coinbase `can_trade`, Robinhood `agentic_allowed`) and the
+    per-venue buying-power read;
+  - `src/main/strategies/rule-action-policy.ts`: the "live" check that labels
+    a rule `trading` or `preview_only` for agents counts only Coinbase routes.
 - **Calendar.** Teach `tradingSessionPolicy` in `src/main/trading/session-policy.ts`
   which asset classes the venue trades and when. Unknown combinations throw; they
   never default to open.

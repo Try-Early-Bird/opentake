@@ -2,6 +2,7 @@ import {readRuleLifecycle} from './rule-lifecycle';
 import {readRuleActivity} from './rule-activity';
 import {supportsRuleTrade,ruleTradeKinds} from '../../shared/strategy-rules';
 import {readRuleActionPolicies} from './rule-action-policy';
+import {investmentVenueIds} from '../../shared/investment-venues';
 import {readRuleEvidence,ruleTradeReasonSql} from './rule-evidence';
 import {createHash,randomUUID} from 'node:crypto';
 import {z} from 'zod';
@@ -85,7 +86,7 @@ export function createRuleProposals(database:Pick<ReturnType<typeof createDataba
   const ruleAccounts=(r:typeof config.rules[number])=>r.action.kind==='agent'?r.action.capabilities.accountIds:'scope' in r.action?[r.action.scope.accountId]:[];
   const candidates=config.rules.filter(r=>(supportsRuleTrade(r)||agentTrades(r))&&(current.tradingRuleIds?.includes(r.id)||JSON.stringify(current.config.rules.find(old=>old.id===r.id))!==JSON.stringify(r)));
   const accounts=candidates.flatMap(ruleAccounts);
-  const owned=(await tx.query<{id:string}>("SELECT a.id FROM linked_accounts a JOIN platform_connections c ON c.id=a.connection_id WHERE a.id=ANY($1::uuid[]) AND c.venue IN ('coinbase','robinhood') AND c.owner_id=(SELECT id FROM local_owners LIMIT 1) ",[accounts])).rows;
+  const owned=(await tx.query<{id:string}>("SELECT a.id FROM linked_accounts a JOIN platform_connections c ON c.id=a.connection_id WHERE a.id=ANY($1::uuid[]) AND c.venue=ANY($2::text[]) AND c.owner_id=(SELECT id FROM local_owners LIMIT 1) ",[accounts,investmentVenueIds])).rows;
   const ruleIds=candidates.filter(r=>ruleAccounts(r).some(id=>owned.some(a=>a.id===id))).map(r=>r.id);
   const eligible=ruleIds.length>0;
   await tx.query('SELECT id FROM local_owners FOR UPDATE');

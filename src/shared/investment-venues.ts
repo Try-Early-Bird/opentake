@@ -6,3 +6,5 @@ export const investmentVenues={
  robinhood:{label:'Robinhood',currencies:['USD'],defaultCurrency:'USD'},
 } as const;
 export type InvestmentVenue=keyof typeof investmentVenues;
+/** Every venue id, for schema enums and SQL filters: one list instead of a literal per query. */
+export const investmentVenueIds=Object.keys(investmentVenues) as [InvestmentVenue,...InvestmentVenue[]];

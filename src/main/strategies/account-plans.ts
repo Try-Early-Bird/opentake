@@ -5,6 +5,7 @@ import type { Transaction } from '@electric-sql/pglite';
 import type { DatabaseClient as PGlite } from '../database-client';
 import type { createDatabaseLifecycle } from '../database';
 import { supportsBasketExecution, hasPendingInstrumentSupport, type BasketSpec } from '../../shared/strategies';
+import { investmentVenueIds } from '../../shared/investment-venues';
 import { saveTakeAccountPlanSchema, type TakeAccountPlan, type TakePlanAccount, type PlannedPortfolioTake } from '../../shared/strategy-account-plan';
 
 type Query = Pick<PGlite, 'query'>;
@@ -33,9 +34,9 @@ async function accounts(db: Query, strategyId:string): Promise<TakePlanAccount[]
  ) used JOIN strategies s ON s.id=used.strategy_id WHERE s.archived_at IS NULL AND s.id<>$1) AS "otherTakeCount"
  FROM linked_accounts a JOIN platform_connections c ON c.id=a.connection_id JOIN local_owners o ON o.id=c.owner_id
  LEFT JOIN coinbase_connection_details cd ON cd.connection_id=c.id
- WHERE c.venue IN ('coinbase','robinhood') AND (c.venue<>'robinhood' OR a.agentic_allowed OR EXISTS(
+ WHERE c.venue=ANY($2::text[]) AND (c.venue<>'robinhood' OR a.agentic_allowed OR EXISTS(
  SELECT 1 FROM strategy_account_routes WHERE strategy_id=$1 AND account_id=a.id) OR EXISTS(
- SELECT 1 FROM strategy_allocations WHERE strategy_id=$1 AND account_id=a.id AND status IN ('active','paused','diverged'))) ORDER BY c.venue,label,a.id`,[strategyId])).rows;
+ SELECT 1 FROM strategy_allocations WHERE strategy_id=$1 AND account_id=a.id AND status IN ('active','paused','diverged'))) ORDER BY c.venue,label,a.id`,[strategyId,investmentVenueIds])).rows;
  for(const account of rows){
   account.balances=[];
   if(!account.available)continue;
