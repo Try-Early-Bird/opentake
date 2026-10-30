@@ -202,7 +202,7 @@ has its own slot in the redesign plan:
 | Area | Today | Where to look |
 |---|---|---|
 | Connect | Bespoke service per venue, a hand-written RPC block in `background-host.ts`, a `desktop.ts` channel entry, a preload bridge, rows in `Connections.tsx` / `ConnectMenu.tsx` | `connections.ts` (Robinhood), `coinbase/connections.ts` |
-| Signing | Venues where Opentake holds a key (agent wallet, dedicated EOA, session key) have no seam yet; keys live in `SecretStore`, main process only, never exported to the renderer or agents | `secret-store.ts` |
+| Signing | Venues where the member's instance signs with the member's own key (agent wallet, dedicated EOA, session key) have no seam yet; keys live in `SecretStore`, main process only, never exposed to agents, revealed to the member only behind an OS auth prompt | `secret-store.ts` |
 | Sync | `account-sync/service.ts` is Robinhood MCP only; Coinbase has parallel tables; `platform-portfolios.ts` merges exactly two venues | `account-sync/`, `coinbase/portfolio.ts` |
 | Prices and performance | Price reader and performance branch on venue and answer `unsupported` / `null` otherwise; quote tables are keyed by bare ticker | `data-sources/market-price-reader.ts`, `strategies/performance.ts` |
 | Agent read tools | Per-venue tool list with contract hashes, a chat scope, and the platform enum in the MCP catalog | `coinbase/read-tools.ts`, `opentake-mcp/catalog.ts` |
