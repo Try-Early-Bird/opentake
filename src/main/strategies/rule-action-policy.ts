@@ -32,7 +32,13 @@ export async function readRuleActionPolicies(tx:Query,takeId:string,rules:Strate
   const tool=matches[0];
   return restrictPolicies(tool.tool_policy,tool.server_policy,take!.permission_mode==='ask'?'ask':'allowed',...scopes.filter(s=>s.server_id===tool.server_id&&(!s.tool_name||s.tool_name===name)).map(s=>s.policy));
  }
- const live=(await tx.query<{account_id:string;trading_rule_ids:string[]}>(`SELECT route.account_id,a.trading_rule_ids FROM strategy_rule_accepted a JOIN strategy_rule_shadow sh ON sh.take_id=a.take_id AND sh.draft_revision=a.revision AND sh.enabled JOIN takes t ON t.id=a.take_id JOIN strategy_account_routes route ON route.strategy_id=t.strategy_id AND route.venue='coinbase' WHERE a.take_id=$1 AND a.trading_enabled`,[takeId])).rows;
+ // Accounts each venue's rule-trade engine would trade on: Coinbase needs the Take's Coinbase
+ // route; Robinhood needs an available account holding the Take's active allocation (its guard).
+ const live=(await tx.query<{account_id:string;trading_rule_ids:string[]}>(`SELECT route.account_id,a.trading_rule_ids FROM strategy_rule_accepted a JOIN strategy_rule_shadow sh ON sh.take_id=a.take_id AND sh.draft_revision=a.revision AND sh.enabled JOIN takes t ON t.id=a.take_id JOIN strategy_account_routes route ON route.strategy_id=t.strategy_id AND route.venue='coinbase' WHERE a.take_id=$1 AND a.trading_enabled
+  UNION ALL SELECT alloc.account_id,a.trading_rule_ids FROM strategy_rule_accepted a JOIN strategy_rule_shadow sh ON sh.take_id=a.take_id AND sh.draft_revision=a.revision AND sh.enabled JOIN takes t ON t.id=a.take_id
+   JOIN strategy_allocations alloc ON alloc.strategy_id=t.strategy_id AND alloc.status='active' AND NOT alloc.restore_required
+   JOIN linked_accounts la ON la.id=alloc.account_id AND la.available JOIN platform_connections c ON c.id=la.connection_id AND c.venue='robinhood'
+   WHERE a.take_id=$1 AND a.trading_enabled`,[takeId])).rows;
  return rules.map(rule=>{
   const base={ruleId:rule.id,action:rule.action.kind,execution:'preview_only' as const};
   if(take.archived_at)return {...base,approval:'blocked',reason:'take_archived'};
