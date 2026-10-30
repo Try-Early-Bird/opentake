@@ -32,6 +32,14 @@ const final=(job:ActionJob)=>['succeeded','blocked','failed','needs_attention','
 /** Asks the member: terminal attention, or attention that keeps being re-checked on the account. */
 const asksForAttention=(job:ActionJob)=>job.state==='needs_attention'||(job.state==='waiting'&&job.waitingFor==='account');
 const settled=(job:ActionJob)=>final(job)||asksForAttention(job);
+/** A venue whose trade jobs the core admits (`VenueModule.admission='core'`). */
+export interface AdmissionHarness extends ConformanceHarness{
+ /** From now on the firing's grant reads as revoked. */
+ revoke():void;
+ restore():void;
+ /** The process dies right after the adapter's next reservation, before any outcome is saved. */
+ crashAfterReserve():void;
+}
 /** Cases a real adapter covers in its own suite, by test name, with the reason. */
 export type CoveredElsewhere=Partial<Record<'crash'|'hang'|'partialCancel',string>>;
 
@@ -96,6 +104,51 @@ export function actionAdapterConformance(name:string,make:()=>Promise<Conformanc
    const done=await until(h.jobs,job.id,settled);
    expect(asksForAttention(done)).toBe(true);expect(h.broker.sent()).toBeLessThanOrEqual(1);
    for(let i=0;i<3;i++)await h.jobs.tick();expect(h.broker.sent()).toBeLessThanOrEqual(1);
+  }finally{await h.close();}
+ });
+}
+
+/** What the core guarantees for a venue it admits: a refusal is terminal only for a job the
+ *  adapter never saw; anything the adapter touched is the adapter's to end. The dispatch
+ *  gate (refusing a *new send* after a revocation) is a separate contract. */
+export function admissionConformance(name:string,make:()=>Promise<AdmissionHarness>){
+ test(`${name}: a job refused before its first step is blocked with the reason; nothing reserved, nothing sent, adapter never called`,async()=>{
+  const h=await make();try{
+   h.revoke();const job=await h.enqueue();await h.jobs.tick();
+   const done=(await h.jobs.get(job.id))!;
+   expect(done).toMatchObject({state:'blocked',reason:'trading_not_granted',startedAt:null});
+   expect(await h.reserved(done)).toBe(0);expect(h.broker.sent()).toBe(0);
+   expect((await h.jobs.history(job.id)).map(e=>e.state)).toEqual(['queued','blocked']);
+   h.restore();await h.jobs.tick();expect((await h.jobs.get(job.id))!.state).toBe('blocked');
+  }finally{await h.close();}
+ });
+ test(`${name}: the started marker is committed before the adapter runs, and on cancel`,async()=>{
+  const h=await make();try{
+   const first=await h.enqueue();expect(first.startedAt).toBeNull();
+   await h.jobs.tick();expect((await h.jobs.get(first.id))!.startedAt).not.toBeNull();
+   const second=await h.enqueue();await h.jobs.cancel(second.id);
+   expect((await h.jobs.get(second.id))!).toMatchObject({state:'cancelled'});expect((await h.jobs.get(second.id))!.startedAt).not.toBeNull();
+  }finally{await h.close();}
+ });
+ test(`${name}: a job the adapter has touched is never blocked by the core, even once revoked`,async()=>{
+  const h=await make();try{
+   const job=await h.enqueue();await h.jobs.tick();expect(await h.reserved(job)).toBeGreaterThan(0);
+   h.revoke();await h.jobs.tick();
+   const current=(await h.jobs.get(job.id))!;
+   expect(current.state).not.toBe('blocked');expect(current.reason).not.toBe('trading_not_granted');
+   expect((await h.jobs.history(job.id)).map(e=>e.state)).not.toContain('blocked');
+  }finally{await h.close();}
+ });
+ test(`${name}: a crash right after the adapter reserved, then a revocation before restart, is handed to the adapter, not blocked`,async()=>{
+  const h=await make();try{
+   h.crashAfterReserve();const job=await h.enqueue();
+   void h.jobs.tick();await new Promise(resolve=>setTimeout(resolve,50));
+   expect(await h.reserved(job)).toBeGreaterThan(0);
+   const before=(await h.jobs.get(job.id))!;expect(before.state).toBe('queued');expect(before.startedAt).not.toBeNull();
+   h.revoke();const restarted=await h.restart();await restarted.tick();
+   const after=(await restarted.get(job.id))!;
+   expect(after.state).not.toBe('blocked');expect((await restarted.history(job.id)).map(e=>e.state)).not.toContain('blocked');
+   expect(h.broker.sent()).toBeLessThanOrEqual(1);
   }finally{await h.close();}
  });
 }

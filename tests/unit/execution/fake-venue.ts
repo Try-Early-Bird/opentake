@@ -7,7 +7,8 @@ import {createActionJobs} from '../../../src/main/execution/action-jobs';
 import {createAccountQueues} from '../../../src/main/execution/account-queues';
 import {createVenueRegistry,coinbaseProfile} from '../../../src/main/venues/registry';
 import type {ActionAdapter,VenueModule,VenueProfile} from '../../../src/main/venues/types';
-import type {ConformanceHarness,SubmitMode} from './action-conformance';
+import type {AdmissionHarness,ConformanceHarness,SubmitMode} from './action-conformance';
+import type {Admission} from '../../../src/main/execution/admission';
 
 type Order={clientRef:string;amount:number;filled:number;open:boolean};
 export function fakeBroker(){
@@ -37,6 +38,8 @@ export type FakeBroker=ReturnType<typeof fakeBroker>;
 export function fakeLedger(){
  const reserved=new Map<string,number>(),sending=new Set<string>();
  return {reserved,sending,
+  /** The process dies right after the next reservation is written, before any outcome is returned. */
+  crashAfterReserve:false,
   reserve:(id:string,amount:number)=>{if(!reserved.has(id))reserved.set(id,amount);},
   release:(id:string,keep=0)=>{reserved.set(id,0);return keep;},
  };
@@ -54,7 +57,11 @@ export function fakeBuyAdapter(broker:FakeBroker,ledger:FakeLedger):ActionAdapte
   },
   async advance(job,{signal}){
    const phase=job.adapterState.phase;
-   if(!phase){ledger.reserve(job.id,job.input.amount);return {state:'running',adapterState:{phase:'reserved'}};}
+   if(!phase){
+    ledger.reserve(job.id,job.input.amount);
+    if(ledger.crashAfterReserve){ledger.crashAfterReserve=false;await new Promise(()=>{});}
+    return {state:'running',adapterState:{phase:'reserved'}};
+   }
    if(phase==='reserved'){
     if(ledger.sending.has(job.id))return broker.find(job.id)?{state:'running',adapterState:{phase:'sent'}}:{state:'needs_attention',reason:'order_uncertain'};
     ledger.sending.add(job.id);
@@ -79,7 +86,7 @@ export function fakeBuyAdapter(broker:FakeBroker,ledger:FakeLedger):ActionAdapte
 }
 export const fakeProfile:VenueProfile={...coinbaseProfile,id:'fake',label:'Fake'};
 
-export async function fakeHarness(options:{stepDeadlineMs?:number}={}):Promise<ConformanceHarness&{db:PGlite;account:string;broker:FakeBroker;ledger:FakeLedger}>{
+export async function fakeHarness(options:{stepDeadlineMs?:number}={}):Promise<ConformanceHarness&AdmissionHarness&{db:PGlite;account:string;broker:FakeBroker;ledger:FakeLedger}>{
  const db=new PGlite();await migrate(db);
  // Adding a venue is one row; this is what an appended migration would insert.
  await db.query("INSERT INTO venues(id) VALUES('fake')");
@@ -87,14 +94,19 @@ export async function fakeHarness(options:{stepDeadlineMs?:number}={}):Promise<C
  const account=(await db.query<{id:string}>("INSERT INTO linked_accounts(connection_id,external_ref,masked_number) VALUES($1,'fake','F') RETURNING id",[connection])).rows[0].id;
  const database={use:<T>(work:(db:PGlite)=>Promise<T>)=>work(db)};
  const broker=fakeBroker(),ledger=fakeLedger();
+ // The fake venue opts in to the core's admission; its permission is a switch the tests flip.
+ let admission:Admission={admitted:true};
  const build=()=>{
-  const module:VenueModule={profile:fakeProfile,adapters:{buy:fakeBuyAdapter(broker,ledger)}};
-  return createActionJobs(database as never,createVenueRegistry([module]),{accounts:createAccountQueues(),stepDeadlineMs:options.stepDeadlineMs??200});
+  const module:VenueModule={profile:fakeProfile,admission:'core',adapters:{buy:fakeBuyAdapter(broker,ledger)}};
+  return createActionJobs(database as never,createVenueRegistry([module]),{accounts:createAccountQueues(),stepDeadlineMs:options.stepDeadlineMs??200,admit:async()=>admission});
  };
  const harness={db,account,broker,ledger,jobs:build(),
   enqueue:(key?:string)=>harness.jobs.enqueue({kind:'buy',origin:'rule',originId:crypto.randomUUID(),idempotencyKey:key??crypto.randomUUID(),accountId:account,venue:'fake',input:{amount:10}}),
   reserved:async(job:{id:string})=>ledger.reserved.get(job.id)??0,
   restart:async()=>{harness.jobs=build();return harness.jobs;},
+  revoke:()=>{admission={admitted:false,reason:'trading_not_granted'};},
+  restore:()=>{admission={admitted:true};},
+  crashAfterReserve:()=>{ledger.crashAfterReserve=true;},
   close:()=>db.close(),
  };
  // Repeated enqueues of one key share one origin.
