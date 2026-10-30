@@ -91,6 +91,7 @@ import {createToolAccess,ToolAccessError} from './tool-access';
 import {createRuleTargetSuggestions} from './strategies/rule-target-suggestions';
 import {createRobinhoodRuleTrades} from './strategies/robinhood-rule-trades';
 import {coinbaseRuleApprovals,createRuleTradeApprovals,robinhoodRuleApprovals} from './strategies/rule-trade-approvals';
+import {ruleTradeAdmission} from './execution/admission';
 import {createAllocationResume} from './allocations/resume';
 import {createAllocationInstructions, authorResult, InstructionNotFound} from './execution/instructions';
 import { createShareEventTracker } from './execution/share-event-repair';
@@ -306,7 +307,8 @@ export function bootBackgroundHost(profile: string, build: string) {
   const ruleTradeApprovals=createRuleTradeApprovals(venues,{
     cancel:async requestId=>{const job=(await database.use(db=>db.query<{id:string}>("SELECT id FROM action_jobs WHERE idempotency_key='rule:'||$1::text",[requestId]))).rows[0];if(job)await actionJobs.cancel(job.id);else await ruleTrades.cancel(requestId);},
     nudge:()=>actionJobs.nudge()});
-  const actionJobs=createActionJobs(database,venues,{accounts:accountQueues,wake:()=>executionLoops?.ruleTrades.wake(),
+  // Admits trade jobs on venues that opt in (`admission:'core'`); Coinbase and Robinhood keep their own engine checks.
+  const actionJobs=createActionJobs(database,venues,{accounts:accountQueues,wake:()=>executionLoops?.ruleTrades.wake(),admit:ruleTradeAdmission(database,venues,tradingEnabled),
     report:error=>diagnostics.record('background.failed',{venue:'coinbase',stage:'rule_trades',error})});
   const coinbasePreflight=createCoinbasePreflight(database,{scope:id=>coinbase.chatScope(id),product:coinbaseTradingProduct});
   const coinbaseTakePerformance=createCoinbaseTakePerformance(database,coinbasePortfolio.prices,Date.now,undefined,product=>coinbaseHoldings.price(product));

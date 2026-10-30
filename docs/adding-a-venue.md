@@ -89,6 +89,17 @@ A `VenueModule` (`src/main/venues/types.ts`) has:
   core's cancel of the action job. The shared approval card lists every
   registered venue's pending trades and routes each decision back to its venue;
   set `estimated:true` when the orders are sized again at placement.
+- **Admission** (`admission:'core'`, recommended for a new venue): the core
+  checks, before a trade job's first adapter step, that trading is on, the
+  venue can do the action, the account is available, and the firing is still
+  active, accepted, granted and not switched off (`execution/admission.ts`,
+  the same checks and reasons as the Robinhood guard). A refused job is
+  `blocked` with the reason and never reaches the adapter. Only a job the
+  adapter has never seen is blocked this way; the core records `started_at`
+  before every adapter call and never ends a started job itself. Coinbase and
+  Robinhood leave this unset and keep their own engine checks, so their
+  outcomes are unchanged. With `admission:'core'` the adapter still re-checks
+  at dispatch time (§3); admission does not see final orders.
 - **Ledger**: `VenueModule.ledger` (`TakeLedger`) is **declared but not yet
   consumed** by anything. Each venue currently keeps its own Take ledger
   (Coinbase: `coinbase_allocations` and friends; Robinhood:

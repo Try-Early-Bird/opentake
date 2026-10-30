@@ -32,6 +32,8 @@ export interface ActionJob<Input=unknown,State=Record<string,unknown>>{
  takeId:string|null;accountId:string|null;venue:string|null;
  input:Input;state:ActionState;waitingFor:WaitingFor|null;reason:string|null;
  attempts:number;adapterState:State;createdAt:Date;updatedAt:Date;
+ /** When the core first handed the job to its adapter; null until then. */
+ startedAt:Date|null;
 }
 
 /** What one step of an adapter decided. `state` and `waiting` write the job;
@@ -82,6 +84,10 @@ export interface VenueApprovals{
 export interface VenueModule{
  profile:VenueProfile;
  adapters:Partial<Record<ActionKind,ActionAdapter<any,any>>>;
+ /** `core`: the core admits this venue's trade jobs (grant, firing, trading on,
+  *  capability) before their first adapter step and blocks refused ones itself.
+  *  Unset: the venue's own engine does those checks, as Coinbase and Robinhood do. */
+ admission?:'core';
  queue?:VenueRuleQueue;
  approvals?:VenueApprovals;
  ledger?:TakeLedger;
