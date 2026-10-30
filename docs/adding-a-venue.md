@@ -144,6 +144,12 @@ interface ActionAdapter<Input, State> {
   following fills, recovering by client id, resolving reservations and honouring
   `cancel`. Only a *new* send is refused. Test this with a revocation after a
   lost submit response: the job recovers, resolves, and sends nothing new.
+- **A job the adapter has touched is only ever ended through the adapter.**
+  Reservations can exist before anything is sent (Coinbase reserves before it
+  asks for approval), and a crash can leave side effects whose outcome was never
+  saved. So `cancel` must be safe to call on any job after `recover`, release
+  what is reserved, keep what filled, and report the outcome; the core never
+  writes a terminal state over a job that has adapter evidence.
 - **Before sending an order, record durably that it is being sent** (as Coinbase
   does with `coinbase_order_dispatches.state='sending'`), using a client order id
   the broker can be queried by. After a crash or a lost response, look the order up
@@ -201,8 +207,8 @@ automation, and each needs a test on the new venue:
 |---|---|
 | Read-only by default | A new connection cannot trade until the member enables it (Coinbase: key permissions → `can_trade`; Robinhood: `agentic_allowed`; a signer venue: no trading until the member turns it on for that connection) |
 | Limits | `OPENTAKE_TRADING`, `confirm_trades`, per-rule approval, per-rule `maxTradeNotionalUsd`, per-account daily notional, and a signer's scope cap are checked immediately before every send, never from a saved result |
-| Pause | Trading off, rule disabled, Take in `ask` mode or grant removed → no new sends; in-flight orders finish, reservations resolve, the member is notified. Never a silent stall |
-| Revoke / disconnect | Disconnect refuses while any dispatch row is `sending`; a signer venue revokes the agent or session key at the venue before deleting the local secret; a wallet key is kept until the member has recovered or swept it |
+| Pause | Trading off, rule disabled or grant removed → no new sends; in-flight orders finish, reservations resolve, the member is notified. Never a silent stall. A Take's chat `permission_mode` is not a trading pause; trading confirmation is `confirm_trades` and per-rule approval |
+| Revoke / disconnect | Disconnect refuses while anything still needs the credential to be managed: a dispatch `sending` or `unknown`, an `accepted` order not yet terminal at the venue, an unresolved cancellation, or a job with adapter evidence still `running`/`waiting`. Offer "cancel open orders, then disconnect". Only after reconciliation: revoke a signer's key at the venue, then delete the local secret; keep a wallet key until the member has recovered or swept it |
 
 ## 5. Scheduling
 
