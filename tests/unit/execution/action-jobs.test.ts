@@ -1,7 +1,7 @@
 // The shared action core, venue registry and capabilities with a
 // fake venue. Synthetic database and broker only.
 import {expect,test} from 'vitest';
-import {actionAdapterConformance,admissionConformance} from './action-conformance';
+import {actionAdapterConformance,admissionConformance,dispatchConformance} from './action-conformance';
 import {fakeHarness,fakeProfile} from './fake-venue';
 import {createVenueRegistry,coinbaseProfile,robinhoodProfile} from '../../../src/main/venues/registry';
 import {actionCapability} from '../../../src/main/execution/capabilities';
@@ -10,6 +10,7 @@ import {ruleTradeOutcome} from '../../../src/main/venues/coinbase';
 
 actionAdapterConformance('fake venue',()=>fakeHarness());
 admissionConformance('fake venue',()=>fakeHarness());
+dispatchConformance('fake venue',()=>fakeHarness());
 
 test('an unsupported action is recorded as blocked with its reason and never reaches an adapter',async()=>{
  const h=await fakeHarness();try{

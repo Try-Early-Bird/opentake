@@ -40,6 +40,12 @@ export interface AdmissionHarness extends ConformanceHarness{
  /** The process dies right after the adapter's next reservation, before any outcome is saved. */
  crashAfterReserve():void;
 }
+/** A venue whose sends run the core's dispatch check inside its `dispatchOrder` claim. */
+export interface DispatchHarness extends AdmissionHarness{
+ disableTrading():void;
+ /** The member approved this job at the given per-order amount. */
+ approve(job:{id:string},amountUsd:string):void;
+}
 /** Cases a real adapter covers in its own suite, by test name, with the reason. */
 export type CoveredElsewhere=Partial<Record<'crash'|'hang'|'partialCancel',string>>;
 
@@ -130,13 +136,13 @@ export function admissionConformance(name:string,make:()=>Promise<AdmissionHarne
    expect((await h.jobs.get(second.id))!).toMatchObject({state:'cancelled'});expect((await h.jobs.get(second.id))!.startedAt).not.toBeNull();
   }finally{await h.close();}
  });
- test(`${name}: a job the adapter has touched is never blocked by the core, even once revoked`,async()=>{
+ test(`${name}: a job the adapter has touched is ended by the adapter, not the core: revoked after its reservation, the adapter refuses the send and releases`,async()=>{
   const h=await make();try{
    const job=await h.enqueue();await h.jobs.tick();expect(await h.reserved(job)).toBeGreaterThan(0);
-   h.revoke();await h.jobs.tick();
-   const current=(await h.jobs.get(job.id))!;
-   expect(current.state).not.toBe('blocked');expect(current.reason).not.toBe('trading_not_granted');
-   expect((await h.jobs.history(job.id)).map(e=>e.state)).not.toContain('blocked');
+   h.revoke();const done=await until(h.jobs,job.id,final);
+   // The adapter ran (the job was running before it ended) and it, not the core, released the reservation.
+   expect((await h.jobs.history(job.id)).map(e=>e.state)).toEqual(['queued','running','blocked']);
+   expect(done.reason).toBe('trading_not_granted');expect(await h.reserved(done)).toBe(0);expect(h.broker.sent()).toBe(0);
   }finally{await h.close();}
  });
  test(`${name}: a crash right after the adapter reserved, then a revocation before restart, is handed to the adapter, not blocked`,async()=>{
@@ -145,10 +151,52 @@ export function admissionConformance(name:string,make:()=>Promise<AdmissionHarne
    void h.jobs.tick();await new Promise(resolve=>setTimeout(resolve,50));
    expect(await h.reserved(job)).toBeGreaterThan(0);
    const before=(await h.jobs.get(job.id))!;expect(before.state).toBe('queued');expect(before.startedAt).not.toBeNull();
-   h.revoke();const restarted=await h.restart();await restarted.tick();
-   const after=(await restarted.get(job.id))!;
-   expect(after.state).not.toBe('blocked');expect((await restarted.history(job.id)).map(e=>e.state)).not.toContain('blocked');
-   expect(h.broker.sent()).toBeLessThanOrEqual(1);
+   h.revoke();const restarted=await h.restart();
+   const after=await until(restarted,job.id,final);
+   // The core saw the marker and handed the job to the adapter, which recovered its reservation,
+   // refused the send and released it. Nothing was sent, and the core wrote no terminal state itself.
+   expect((await restarted.history(job.id)).map(e=>e.state)).toEqual(['queued','running','blocked']);
+   expect(after.reason).toBe('trading_not_granted');expect(await h.reserved(after)).toBe(0);expect(h.broker.sent()).toBe(0);
+  }finally{await h.close();}
+ });
+}
+
+/** What the core's dispatch check guarantees: a revocation, a disabled switch or an approval the
+ *  final orders exceed refuses the send at the claim, releases the reservation and sends nothing;
+ *  once an order is out, nothing new is ever sent, whatever changes. */
+export function dispatchConformance(name:string,make:()=>Promise<DispatchHarness>){
+ test(`${name}: revoked between the reservation and the send: the claim refuses, nothing is sent, the reservation is released`,async()=>{
+  const h=await make();try{
+   const job=await h.enqueue();await h.jobs.tick();expect(await h.reserved(job)).toBeGreaterThan(0);
+   h.revoke();const done=await until(h.jobs,job.id,final);
+   expect(done).toMatchObject({state:'blocked',reason:'trading_not_granted'});
+   expect(h.broker.sent()).toBe(0);expect(await h.reserved(done)).toBe(0);
+  }finally{await h.close();}
+ });
+ test(`${name}: trading switched off between the reservation and the send refuses the same way`,async()=>{
+  const h=await make();try{
+   const job=await h.enqueue();await h.jobs.tick();h.disableTrading();
+   const done=await until(h.jobs,job.id,final);
+   expect(done).toMatchObject({state:'blocked',reason:'trading_disabled'});expect(h.broker.sent()).toBe(0);expect(await h.reserved(done)).toBe(0);
+  }finally{await h.close();}
+ });
+ test(`${name}: final orders within what the member approved are sent; orders beyond it are refused`,async()=>{
+  const h=await make();try{
+   const ok=await h.enqueue();h.approve(ok,'9.50');
+   await until(h.jobs,ok.id,()=>h.broker.sent()>0);expect(h.broker.sent()).toBe(1);
+   const over=await h.enqueue();h.approve(over,'5');
+   const done=await until(h.jobs,over.id,final);
+   expect(done).toMatchObject({state:'blocked',reason:'approval_exceeded'});expect(h.broker.sent()).toBe(1);expect(await h.reserved(done)).toBe(0);
+  }finally{await h.close();}
+ });
+ test(`${name}: revoked after a lost submit response: the job keeps recovering by its client id and sends nothing new`,async()=>{
+  const h=await make();try{
+   h.broker.nextSubmit('lost');const job=await h.enqueue();
+   const lost=await until(h.jobs,job.id,settled);expect(h.broker.sent()).toBe(1);expect(await h.reserved(lost)).toBeGreaterThan(0);
+   h.revoke();const restarted=await h.restart();
+   for(let i=0;i<3;i++)await restarted.tick();
+   expect(h.broker.sent()).toBe(1);
+   const after=(await restarted.get(job.id))!;expect(after.state).not.toBe('blocked');
   }finally{await h.close();}
  });
 }

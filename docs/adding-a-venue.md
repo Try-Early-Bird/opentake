@@ -150,6 +150,18 @@ interface ActionAdapter<Input, State> {
   against what the member approved. Write refusal tests for a revoked grant, a
   disabled rule, an expired request, trading turned off, and an approval whose
   orders changed.
+  **The core supplies this check for a venue that opts in:** build
+  `dispatchAuthorization(admit)` (`execution/dispatch-authorization.ts`) and
+  call it inside your `claim()` with the final orders, what the member approved
+  (if approval was needed) and your limit evidence. It re-reads the grant as a
+  started job, applies the shared approval tolerance (`withinApproved`: same
+  symbol and side, no new orders, at most ten percent or one dollar more per
+  order; Robinhood's engine already uses this function from the core) and the
+  shared `riskEligibility`, and throws `DispatchRefused` with the reason, which
+  fails the claim so nothing is sent. The fake venue
+  (`tests/unit/execution/fake-venue.ts`) is the exemplar, and
+  `dispatchConformance` is the test to pass. Coinbase's engine keeps its own
+  bps tolerance and re-confirmation until it opts in.
 - **Revocation stops new sends, nothing else.** If the grant is removed or
   trading is turned off while an order is already out, the adapter must keep
   following fills, recovering by client id, resolving reservations and honouring
