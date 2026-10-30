@@ -1,4 +1,5 @@
 import { approvalCopy } from '../shared/tool-approval-copy';
+import { investmentVenueIds } from '../shared/investment-venues';
 import { backgroundDatabaseWork } from './database-client';
 import { setImmediate as yieldToHost } from 'node:timers/promises';
 import type { DatabaseClient as PGlite } from './database-client';
@@ -264,8 +265,8 @@ export function createNotifications(database: Database, options: Options) {
           if(!allocationId&&!accountId)continue;
           const account=(await tx.query<{venue:'coinbase'|'robinhood';label:string}>(`SELECT pc.venue,coalesce(c.label,a.nickname,a.masked_number) AS label
             FROM linked_accounts a JOIN platform_connections pc ON pc.id=a.connection_id LEFT JOIN coinbase_connection_details c ON c.connection_id=pc.id
-            WHERE pc.venue IN ('coinbase','robinhood') AND (a.id::text=$1 OR a.id IN (
-              SELECT account_id FROM strategy_allocations WHERE id::text=$2 UNION ALL SELECT account_id FROM coinbase_allocations WHERE id::text=$2)) LIMIT 1`,[accountId??null,allocationId??null])).rows[0];
+            WHERE pc.venue=ANY($3::text[]) AND (a.id::text=$1 OR a.id IN (
+              SELECT account_id FROM strategy_allocations WHERE id::text=$2 UNION ALL SELECT account_id FROM coinbase_allocations WHERE id::text=$2)) LIMIT 1`,[accountId??null,allocationId??null,investmentVenueIds])).rows[0];
           if(account)row.payload={...p,account};
         }
         // Enrich older receipts only when their observed state still matches the order.

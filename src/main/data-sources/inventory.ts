@@ -1,4 +1,5 @@
 import {readCoinbaseAccountConfig} from '../../shared/coinbase-field-mappings';
+import {investmentVenueIds} from '../../shared/investment-venues';
 import type { createDatabaseLifecycle } from '../database';
 import type { DataSourceInventory, ManagedDataFeed, ManagedDataSource } from '../../shared/data-sources';
 
@@ -32,8 +33,8 @@ export function createDataSourceInventory(database: Database) {
       FROM linked_accounts a JOIN platform_connections c ON c.id=a.connection_id
       JOIN local_owners o ON o.id=c.owner_id
       LEFT JOIN coinbase_connection_details cd ON cd.connection_id=c.id
-      WHERE c.venue IN ('robinhood','coinbase') AND c.status<>'disconnected'
-      ORDER BY c.venue,a.id LIMIT 128`)).rows;
+      WHERE c.venue=ANY($1::text[]) AND c.status<>'disconnected'
+      ORDER BY c.venue,a.id LIMIT 128`,[investmentVenueIds])).rows;
     const sources: ManagedDataSource[] = [];
     for (const account of accounts) {
       let rows: FeedRow[];
